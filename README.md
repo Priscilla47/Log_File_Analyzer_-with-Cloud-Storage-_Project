@@ -28,3 +28,7 @@ I started this while learning about cloud and log analysis and never finished it
 ## Project layout
 
 The layout and the reasoning behind it will be documented in `docs/`.
+
+## License
+
+Released under the [MIT License](LICENSE).
