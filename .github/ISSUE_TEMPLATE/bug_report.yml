@@ -1,0 +1,56 @@
+name: Bug report
+description: Something is not working as expected
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        **Do not paste real log data containing IP addresses or personal information.** Replace them with placeholders (for example `203.0.113.7`) or use a line from `data/samples/`.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran, or the dashboard steps, and the (redacted) log lines involved.
+      placeholder: |
+        1. Run `loginsight analyze sample.log`
+        2. See the error
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or error message
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: LogInsight version or commit
+      placeholder: "e.g. 0.1.0 or a commit hash"
+  - type: input
+    id: environment
+    attributes:
+      label: Python version and operating system
+      placeholder: "e.g. Python 3.12, Ubuntu 24.04"
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Parsing
+        - Analysis
+        - Detection
+        - Storage
+        - Reporting
+        - Dashboard
+        - CLI
+        - Documentation
+        - Not sure

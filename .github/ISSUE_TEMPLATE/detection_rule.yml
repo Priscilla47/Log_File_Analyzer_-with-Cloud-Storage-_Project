@@ -1,0 +1,55 @@
+name: Detection rule or false positive
+description: Propose a new attack-detection rule, or report a wrong detection
+title: "rule: "
+labels: ["detection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for new rules, missed attacks (false negatives) and wrong alerts (false positives).
+        **Redact IP addresses and anything personal** in the log lines you share.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this about?
+      options:
+        - New rule
+        - Missed attack (false negative)
+        - Wrong alert (false positive)
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Attack category
+      options:
+        - SQL injection
+        - Cross-site scripting (XSS)
+        - Path traversal
+        - Command injection
+        - Sensitive file probe
+        - Brute force
+        - Scanning
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example log line(s)
+      description: Redacted lines that show the behaviour.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What should LogInsight report (label and severity), or why should it stay quiet?
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Optional links that describe the attack pattern.
