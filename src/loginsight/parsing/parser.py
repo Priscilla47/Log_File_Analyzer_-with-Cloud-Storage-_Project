@@ -18,7 +18,7 @@ def parse_line(line):
 
 def parse_file(filepath):
     entries = []
-    with open(filepath, 'r') as file:
+    with open(filepath) as file:
         for line in file:
             parsed = parse_line(line)
             if parsed:

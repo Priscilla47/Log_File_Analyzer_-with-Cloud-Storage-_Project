@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 
+
 def plot_status_codes(df):
     status_counts = df['status'].value_counts()
     status_counts.plot(kind='bar', color='skyblue')
