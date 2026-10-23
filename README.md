@@ -16,6 +16,24 @@ A web server access-log analyzer. Point it at an Apache or Nginx log and it tell
 
 I started this while learning about cloud and log analysis and never finished it. This repository is the finished version, built step by step in the open.
 
+## Development setup
+
+Requires Python 3.10 or newer.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Run the tests and the linter:
+
+```bash
+pytest          # fast tests
+pytest -m slow  # long-running checks
+ruff check .    # lint
+```
+
 ## Roadmap
 
 1. Project structure and documentation

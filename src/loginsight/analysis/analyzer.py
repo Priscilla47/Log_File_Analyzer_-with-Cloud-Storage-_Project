@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def analyze_entries(entries):
     df = pd.DataFrame(entries)
 
