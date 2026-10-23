@@ -46,3 +46,7 @@ ruff check .    # lint
 ## Project layout
 
 The layout and the reasoning behind it will be documented in `docs/`.
+
+## License
+
+Released under the [MIT License](LICENSE).
