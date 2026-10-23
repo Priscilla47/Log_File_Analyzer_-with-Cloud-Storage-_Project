@@ -1,5 +1,5 @@
 from importlib import import_module
-from importlib.metadata import version
+from importlib.metadata import metadata, version
 
 import pytest
 
@@ -21,3 +21,7 @@ def test_version_matches_installed_metadata():
 )
 def test_subpackage_is_importable(name):
     assert import_module(f"loginsight.{name}")
+
+
+def test_licence_metadata_is_mit():
+    assert metadata("loginsight")["License-Expression"] == "MIT"
