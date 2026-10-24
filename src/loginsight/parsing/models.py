@@ -32,3 +32,40 @@ class LogEntry:
     def to_dict(self) -> dict:
         """All fields as a plain dict, for building DataFrames and JSON output."""
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class ParseIssue:
+    """One line that could not be parsed, with where it was and why."""
+
+    line_number: int
+    reason: str
+    line: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ParseStats:
+    """What happened while reading a log file.
+
+    Blank lines are not counted, so ``parsed + skipped == total_lines`` always holds.
+    ``first_errors`` keeps only the first few problems, with the line text shortened.
+    """
+
+    total_lines: int
+    parsed: int
+    skipped: int
+    skipped_by_reason: dict[str, int]
+    first_errors: list[ParseIssue]
+
+    @property
+    def success_rate(self) -> float:
+        """Share of lines that were parsed, or ``1.0`` for a file with no lines."""
+        return self.parsed / self.total_lines if self.total_lines else 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class ParseResult:
+    """The entries read from a file together with the statistics about the read."""
+
+    entries: list[LogEntry]
+    stats: ParseStats
