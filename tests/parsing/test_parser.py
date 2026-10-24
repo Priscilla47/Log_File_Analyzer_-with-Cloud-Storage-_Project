@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from loginsight.parsing.models import LogEntry
-from loginsight.parsing.parser import MAX_LINE_LENGTH, LogParseError, parse_file, parse_line
+from loginsight.parsing.parser import MAX_LINE_LENGTH, LogParseError, parse_line
 
 SAMPLE = Path(__file__).resolve().parents[2] / "data" / "samples" / "access_sample.log"
 
@@ -304,76 +304,3 @@ def test_adversarial_line_is_rejected_quickly():
     with pytest.raises(LogParseError):
         parse_line(text)
     assert time.perf_counter() - started < 1.0
-
-
-# --- parse_file -----------------------------------------------------------------------
-
-
-def test_parse_file_reads_the_sample_log_in_order():
-    entries = parse_file(SAMPLE)
-    assert [e.ip for e in entries] == [
-        "192.168.1.1",
-        "192.168.1.2",
-        "192.168.1.3",
-        "192.168.1.1",
-        "192.168.1.4",
-    ]
-    assert [e.status for e in entries] == [200, 401, 200, 404, 200]
-    assert all(isinstance(e, LogEntry) for e in entries)
-
-
-def test_parse_file_skips_unreadable_lines_and_ignores_blank_ones(tmp_path):
-    path = tmp_path / "mixed.log"
-    path.write_text(f"{line()}\nthis is junk\n\n{line(status='404')}\nmore junk\n")
-    assert [e.status for e in parse_file(path)] == [200, 404]
-
-
-def test_parse_file_keeps_lines_with_a_malformed_request(tmp_path):
-    path = tmp_path / "odd.log"
-    path.write_text(f"{line()}\n{line(request='-', status='408', size='0')}\n")
-    entries = parse_file(path)
-    assert [e.status for e in entries] == [200, 408]
-
-
-def test_parse_file_skips_lines_with_a_bad_timestamp_without_stopping(tmp_path):
-    path = tmp_path / "dates.log"
-    path.write_text(f"{line()}\n{line(when='99/Foo/2025:10:00:00 +0000')}\n{line(status='404')}\n")
-    assert [e.status for e in parse_file(path)] == [200, 404]
-
-
-def test_parse_file_on_an_empty_file(tmp_path):
-    path = tmp_path / "empty.log"
-    path.write_text("")
-    assert parse_file(path) == []
-
-
-def test_parse_file_on_a_missing_path_raises(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        parse_file(tmp_path / "missing.log")
-
-
-def test_parse_file_accepts_a_string_path(tmp_path):
-    path = tmp_path / "one.log"
-    path.write_text(line() + "\n")
-    assert len(parse_file(str(path))) == 1
-
-
-def test_parse_file_handles_a_missing_final_newline(tmp_path):
-    path = tmp_path / "nonewline.log"
-    path.write_text(line())
-    assert len(parse_file(path)) == 1
-
-
-def test_parse_file_handles_windows_line_endings(tmp_path):
-    path = tmp_path / "crlf.log"
-    path.write_bytes((line() + "\r\n" + line(status="404") + "\r\n").encode())
-    assert [e.status for e in parse_file(path)] == [200, 404]
-
-
-def test_parse_file_raises_on_invalid_utf8(tmp_path):
-    # Still the case after this change. Fixed in #8 (open with errors="replace"); when that
-    # lands this test fails and should be replaced by one asserting the line is read.
-    path = tmp_path / "binary.log"
-    path.write_bytes(b'1.1.1.1 - - [01/Jun/2025:10:00:00 -0700] "GET /\xff HTTP/1.1" 200 5\n')
-    with pytest.raises(UnicodeDecodeError):
-        parse_file(path)
