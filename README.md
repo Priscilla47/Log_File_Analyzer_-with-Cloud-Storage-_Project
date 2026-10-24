@@ -45,7 +45,11 @@ ruff check .    # lint
 
 ## Project layout
 
-The layout and the reasoning behind it will be documented in `docs/`.
+The layout and the reasoning behind it are in the `docs/` folder:
+
+- [Goals](docs/GOALS.md): what the project is for, and what it is not
+- [Architecture](docs/ARCHITECTURE.md): the planned design
+- [Project structure](docs/STRUCTURE.md): how the folders are organised and why
 
 ## License
 
