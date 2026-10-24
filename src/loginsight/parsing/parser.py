@@ -9,10 +9,14 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from loginsight.parsing.models import LogEntry
+from loginsight.parsing.models import LogEntry, ParseIssue, ParseResult, ParseStats
 
 # Longer lines are rejected before matching, which bounds the work done per line.
 MAX_LINE_LENGTH = 8192
+
+# Parse statistics keep only the first few problems, each with a shortened copy of the line.
+MAX_FIRST_ERRORS = 10
+MAX_ERROR_LINE_LENGTH = 200
 
 _QUOTED = r'(?:[^"\\]|\\.)*'  # text inside quotes, allowing backslash-escaped characters
 
@@ -115,19 +119,38 @@ def parse_line(line: str) -> LogEntry:
     )
 
 
-def parse_file(filepath: str | Path) -> list[LogEntry]:
-    """Parse every readable line of a log file.
+def parse_file(filepath: str | Path) -> ParseResult:
+    """Parse a log file and report what was read and what was skipped.
 
-    Blank lines and lines that raise :class:`LogParseError` are skipped. Statistics about
-    what was skipped are added in a later change.
+    Blank lines are ignored but still count towards line numbers. A line that raises
+    :class:`LogParseError` is skipped and counted in the statistics. The file is read as
+    UTF-8 and invalid bytes are replaced, so they never stop the parse. A missing file or a
+    directory raises the usual :class:`OSError` subclass.
     """
-    entries = []
-    with open(filepath, encoding="utf-8") as file:
-        for raw in file:
+    entries: list[LogEntry] = []
+    skipped_by_reason: dict[str, int] = {}
+    first_errors: list[ParseIssue] = []
+    total_lines = 0
+
+    with open(filepath, encoding="utf-8", errors="replace") as file:
+        for line_number, raw in enumerate(file, start=1):
             if not raw.strip():
                 continue
+            total_lines += 1
             try:
                 entries.append(parse_line(raw))
-            except LogParseError:
-                continue
-    return entries
+            except LogParseError as error:
+                skipped_by_reason[error.reason] = skipped_by_reason.get(error.reason, 0) + 1
+                if len(first_errors) < MAX_FIRST_ERRORS:
+                    text = raw.rstrip("\r\n")[:MAX_ERROR_LINE_LENGTH]
+                    first_errors.append(ParseIssue(line_number, error.reason, text))
+
+    skipped = sum(skipped_by_reason.values())
+    stats = ParseStats(
+        total_lines=total_lines,
+        parsed=len(entries),
+        skipped=skipped,
+        skipped_by_reason=skipped_by_reason,
+        first_errors=first_errors,
+    )
+    return ParseResult(entries=entries, stats=stats)
