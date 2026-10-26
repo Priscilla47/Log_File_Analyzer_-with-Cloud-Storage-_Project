@@ -25,3 +25,7 @@ def test_subpackage_is_importable(name):
 
 def test_licence_metadata_is_mit():
     assert metadata("loginsight")["License-Expression"] == "MIT"
+
+
+def test_deliberately_broken():
+    assert 1 == 2
