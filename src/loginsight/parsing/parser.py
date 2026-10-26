@@ -130,15 +130,15 @@ def parse_file(filepath: str | Path) -> ParseResult:
 
     Blank lines are ignored but still count towards line numbers. A line that raises
     :class:`LogParseError` is skipped and counted in the statistics. The file is read as
-    UTF-8 and invalid bytes are replaced, so they never
-    stop the parse. A missing file or a directory raises the usual :class:`OSError` subclass.
+    UTF-8: a leading byte order mark is dropped and invalid bytes are replaced, so neither
+    stops the parse. A missing file or a directory raises the usual :class:`OSError` subclass.
     """
     entries: list[LogEntry] = []
     skipped_by_reason: dict[str, int] = {}
     first_errors: list[ParseIssue] = []
     total_lines = 0
 
-    with open(filepath, encoding="utf-8", errors="replace") as file:
+    with open(filepath, encoding="utf-8-sig", errors="replace") as file:
         for line_number, raw in enumerate(file, start=1):
             if not raw.strip():
                 continue
