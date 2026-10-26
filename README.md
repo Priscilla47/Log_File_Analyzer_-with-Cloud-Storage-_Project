@@ -34,6 +34,13 @@ pytest -m slow  # long-running checks
 ruff check .    # lint
 ```
 
+Optionally, run the same checks automatically before every commit:
+
+```bash
+pre-commit install            # once per clone
+pre-commit run --all-files    # run on everything now
+```
+
 ## Roadmap
 
 1. Project structure and documentation
