@@ -365,3 +365,87 @@ def test_defaults_match_the_documented_usage(gen):
     assert gen.DEFAULT_SEED == 42
     assert gen.DEFAULT_LINES == 1000
     assert gen.DEFAULT_ATTACK_RATIO == 0.1
+
+
+# --- output paths ---------------------------------------------------------------------
+
+
+def run(gen, *args):
+    with pytest.raises(SystemExit) as info:
+        gen.main(list(args))
+    return info.value.code
+
+
+def test_the_same_path_for_log_and_labels_is_refused_and_nothing_is_written(gen, tmp_path):
+    path = tmp_path / "same.txt"
+    assert run(gen, "--lines", "50", "--output", str(path), "--labels", str(path)) == 2
+    assert not path.exists()
+
+
+def test_the_same_path_is_refused_even_when_spelled_differently(gen, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sub").mkdir()
+    code = run(gen, "--output", "out.txt", "--labels", "sub/../out.txt", "--lines", "5")
+    assert code == 2
+    assert list(tmp_path.iterdir()) == [tmp_path / "sub"]
+
+
+def test_a_symlink_to_the_log_counts_as_the_same_file(gen, tmp_path):
+    log = tmp_path / "out.log"
+    log.write_text("keep me\n")
+    link = tmp_path / "link.jsonl"
+    link.symlink_to(log)
+    assert run(gen, "--lines", "5", "--output", str(log), "--labels", str(link)) == 2
+    assert log.read_text() == "keep me\n"
+
+
+def test_an_existing_log_is_not_touched_when_the_paths_clash(gen, tmp_path):
+    path = tmp_path / "precious.log"
+    path.write_text("precious\n")
+    run(gen, "--lines", "5", "--output", str(path), "--labels", str(path))
+    assert path.read_text() == "precious\n"
+
+
+def test_a_missing_output_folder_is_a_usage_error_not_a_traceback(gen, tmp_path, capsys):
+    target = tmp_path / "no" / "such" / "dir" / "x.log"
+    assert run(gen, "--lines", "5", "--output", str(target)) == 2
+    error = capsys.readouterr().err
+    assert "does not exist" in error
+    assert "Traceback" not in error
+
+
+def test_a_missing_labels_folder_stops_before_the_log_is_written(gen, tmp_path):
+    log = tmp_path / "x.log"
+    labels = tmp_path / "missing" / "x.jsonl"
+    assert run(gen, "--lines", "5", "--output", str(log), "--labels", str(labels)) == 2
+    assert not log.exists()
+
+
+def test_a_directory_given_as_a_file_is_a_usage_error(gen, tmp_path, capsys):
+    assert run(gen, "--lines", "5", "--output", str(tmp_path)) == 2
+    assert "is a directory" in capsys.readouterr().err
+
+
+def test_a_write_failure_gives_a_clean_message_and_exit_1(gen, tmp_path, monkeypatch, capsys):
+    def refuse(self, *args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "write_text", refuse)
+    code = gen.main(["--lines", "5", "--output", str(tmp_path / "x.log")])
+    error = capsys.readouterr().err
+    assert code == 1
+    assert "cannot write" in error
+    assert "Permission denied" in error
+
+
+def test_different_files_in_the_same_folder_still_work(gen, tmp_path):
+    log, labels = tmp_path / "a.log", tmp_path / "a.jsonl"
+    assert gen.main(["--lines", "30", "--output", str(log), "--labels", str(labels)]) == 0
+    assert len(log.read_text().splitlines()) == 30
+
+
+def test_overwriting_an_existing_output_is_still_allowed(gen, tmp_path):
+    log = tmp_path / "again.log"
+    log.write_text("old\n")
+    assert gen.main(["--lines", "10", "--output", str(log)]) == 0
+    assert len(log.read_text().splitlines()) == 10
