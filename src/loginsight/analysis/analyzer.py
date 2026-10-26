@@ -31,8 +31,8 @@ def analyze_entries(entries):
             df["time"] = pd.to_datetime(df["time"], utc=True)
 
     stats = {
-        "total_requests": int(len(df)),
-        "unique_ips": int(df["ip"].nunique()),
+        "total_requests": len(df),
+        "unique_ips": df["ip"].nunique(),
         "most_common_ips": df["ip"].value_counts().head(5).to_dict(),
         "most_requested_paths": df["path"].value_counts().head(5).to_dict(),
         "status_code_counts": df["status"].value_counts().to_dict(),

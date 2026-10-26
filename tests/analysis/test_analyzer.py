@@ -248,6 +248,14 @@ def test_the_time_column_stays_a_datetime_when_offsets_differ():
     assert df["time"].dt.hour.tolist() == [17, 17, 17]
 
 
+def test_a_list_mixing_log_entries_and_dicts_is_accepted():
+    mixed = [log_entry(ip="192.0.2.1", path="/a", size=10), entry("192.0.2.2", "/b", 404, 20)]
+    df, stats = analyze_entries(mixed)
+    assert df["ip"].tolist() == ["192.0.2.1", "192.0.2.2"]
+    assert stats["total_requests"] == 2
+    assert stats["status_code_counts"] == {200: 1, 404: 1}
+
+
 def test_a_generator_of_log_entries_is_handled_like_a_list():
     when = datetime(2025, 6, 1, 10, tzinfo=timezone(timedelta(hours=-7)))
     entries = [log_entry(when=when), log_entry(when=when + timedelta(hours=1))]
