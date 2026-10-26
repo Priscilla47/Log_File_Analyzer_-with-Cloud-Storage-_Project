@@ -1,5 +1,6 @@
 """Tests for the synthetic log generator in scripts/generate_logs.py."""
 
+import errno
 import importlib.util
 import ipaddress
 import json
@@ -436,6 +437,49 @@ def test_a_write_failure_gives_a_clean_message_and_exit_1(gen, tmp_path, monkeyp
     assert code == 1
     assert "cannot write" in error
     assert "Permission denied" in error
+
+
+def fail_writes_to(monkeypatch, name):
+    """Make writing the file called ``name`` fail with a disk-full error that has no filename.
+
+    A real failed write() raises an OSError without a filename, so the program has to know
+    which file it was writing.
+    """
+    original = Path.write_text
+
+    def write_text(self, *args, **kwargs):
+        if self.name == name:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write_text)
+
+
+def test_a_failed_log_write_names_the_log_file(gen, tmp_path, monkeypatch, capsys):
+    fail_writes_to(monkeypatch, "out.log")
+    code = gen.main(["--lines", "5", "--output", str(tmp_path / "out.log")])
+    error = capsys.readouterr().err
+    assert code == 1
+    assert str(tmp_path / "out.log") in error
+    assert "No space left on device" in error
+    assert "None" not in error
+
+
+def test_a_failed_labels_write_names_the_labels_file(gen, tmp_path, monkeypatch, capsys):
+    fail_writes_to(monkeypatch, "out.jsonl")
+    args = ["--lines", "5", "--output", str(tmp_path / "out.log")]
+    code = gen.main([*args, "--labels", str(tmp_path / "out.jsonl")])
+    error = capsys.readouterr().err
+    assert code == 1
+    assert str(tmp_path / "out.jsonl") in error
+    assert str(tmp_path / "out.log") not in error
+    assert "None" not in error
+
+
+def test_the_error_message_is_a_single_line(gen, tmp_path, monkeypatch, capsys):
+    fail_writes_to(monkeypatch, "out.log")
+    gen.main(["--lines", "5", "--output", str(tmp_path / "out.log")])
+    assert len(capsys.readouterr().err.strip().splitlines()) == 1
 
 
 def test_different_files_in_the_same_folder_still_work(gen, tmp_path):

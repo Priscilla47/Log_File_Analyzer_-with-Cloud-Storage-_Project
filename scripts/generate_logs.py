@@ -463,17 +463,18 @@ def main(argv: list[str] | None = None) -> int:
 
     log_lines, labels = generate(args.seed, args.lines, args.attack_ratio, args.start)
 
-    try:
-        args.output.write_text("".join(f"{x}\n" for x in log_lines), encoding="utf-8", newline="\n")
-        if args.labels is not None:
-            text = "".join(json.dumps(item) + "\n" for item in labels)
-            args.labels.write_text(text, encoding="utf-8", newline="\n")
-    except OSError as error:
-        print(
-            f"{parser.prog}: error: cannot write {error.filename}: {error.strerror}",
-            file=sys.stderr,
-        )
-        return 1
+    log_text = "".join(f"{x}\n" for x in log_lines)
+    labels_text = "".join(json.dumps(item) + "\n" for item in labels)
+    writes = [(args.output, log_text)]
+    if args.labels is not None:
+        writes.append((args.labels, labels_text))
+    for path, text in writes:
+        try:
+            path.write_text(text, encoding="utf-8", newline="\n")
+        except OSError as error:
+            # A failed write() carries no filename, so name the file we were writing.
+            print(f"{parser.prog}: error: cannot write {path}: {error.strerror}", file=sys.stderr)
+            return 1
     return 0
 
 
