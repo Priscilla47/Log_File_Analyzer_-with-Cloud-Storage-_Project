@@ -340,6 +340,15 @@ def test_to_dict_can_be_written_as_json_and_read_back(main):
     assert data["last_time"] == "2025-06-01T12:09:00+00:00"
 
 
+def test_to_dict_uses_only_plain_json_types_without_a_json_round_trip(main):
+    # json.dumps would quietly turn integer keys into strings, so check the dict itself.
+    data = main.to_dict()
+    assert all(type(key) is str for key in data["status_codes"])
+    assert all(type(key) is str for key in data["status_classes"])
+    assert all(type(item) is dict for item in data["top_ips"] + data["top_paths"])
+    assert type(data["first_time"]) is str
+
+
 def test_to_dict_keeps_the_offset_of_the_timestamps():
     when = datetime(2025, 6, 1, 10, 0, tzinfo=timezone(timedelta(hours=-7)))
     assert summarize([make(when=when)]).to_dict()["first_time"] == "2025-06-01T10:00:00-07:00"
