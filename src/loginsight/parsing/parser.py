@@ -3,6 +3,10 @@
 Real logs are messy and attackers send odd requests on purpose, so a line the parser can
 place in time is kept even when its request line is malformed. Lines that cannot be read
 raise :class:`LogParseError` with a ``reason`` saying why.
+
+Fields a server appends after the user agent are ignored. A Common-format line with extra
+fields, a virtual-host prefix, or a client name containing a space is not recognised and is
+reported as ``no_match``.
 """
 
 import re
@@ -24,7 +28,9 @@ _LINE = re.compile(
     r"(?P<ip>\S+) \S+ \S+ \[(?P<time>[^\]]*)\] "
     rf'"(?P<request>{_QUOTED})" '
     r"(?P<status>[0-9]{3}) (?P<size>\S+)"
-    rf'(?: "(?P<referer>{_QUOTED})" "(?P<user_agent>{_QUOTED})")?'
+    # Combined format. Servers often append fields after the user agent (a request time, the
+    # forwarded-for address, ...), so anything after the user agent is accepted and ignored.
+    rf'(?: "(?P<referer>{_QUOTED})" "(?P<user_agent>{_QUOTED})"(?:\s.*)?)?'
     r"\s*"
 )
 
@@ -124,8 +130,8 @@ def parse_file(filepath: str | Path) -> ParseResult:
 
     Blank lines are ignored but still count towards line numbers. A line that raises
     :class:`LogParseError` is skipped and counted in the statistics. The file is read as
-    UTF-8 and invalid bytes are replaced, so they never stop the parse. A missing file or a
-    directory raises the usual :class:`OSError` subclass.
+    UTF-8 and invalid bytes are replaced, so they never
+    stop the parse. A missing file or a directory raises the usual :class:`OSError` subclass.
     """
     entries: list[LogEntry] = []
     skipped_by_reason: dict[str, int] = {}

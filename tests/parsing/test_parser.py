@@ -212,6 +212,87 @@ def test_trailing_whitespace_and_line_endings_are_tolerated(ending):
     assert parse_line(line() + ending).status == 200
 
 
+# --- fields after the user agent ------------------------------------------------------
+
+EXTRAS = [
+    " 0.012",
+    " 123456",
+    ' "203.0.113.9"',
+    ' "203.0.113.9, 198.51.100.4"',
+    " 0.012 0.010 gzip",
+    ' rt=0.012 uct="0.001" uht="0.011"',
+    "\t0.012",
+    '  "203.0.113.9"  ',
+    ' "an \\"escaped\\" quote"',
+    ' "unbalanced',
+    ' "',
+    " -",
+]
+
+
+@pytest.mark.parametrize("extra", EXTRAS)
+def test_fields_after_the_user_agent_are_ignored(extra):
+    plain = parse_line(combined())
+    assert parse_line(combined() + extra) == plain
+
+
+@pytest.mark.parametrize("extra", EXTRAS)
+def test_extra_fields_never_leak_into_the_user_agent_or_referer(extra):
+    entry = parse_line(combined() + extra)
+    assert entry.referer == "http://example.test/"
+    assert entry.user_agent == "Mozilla/5.0"
+
+
+def test_extra_fields_after_an_escaped_quote_in_the_user_agent():
+    entry = parse_line(combined(agent=r'"Agent \"quoted\" 1.0"') + ' "203.0.113.9" 0.5')
+    assert entry.user_agent == r"Agent \"quoted\" 1.0"
+    assert entry.status == 200
+
+
+def test_dash_referer_and_agent_with_extra_fields_are_still_none():
+    entry = parse_line(combined(referer='"-"', agent='"-"') + " 0.012")
+    assert (entry.referer, entry.user_agent) == (None, None)
+
+
+def test_extra_fields_do_not_hide_a_bad_timestamp_or_size():
+    assert reason_of(combined(when="99/Foo/2025:10:00:00 +0000") + " 0.012") == "bad_timestamp"
+    assert reason_of(combined(size="12x") + " 0.012") == "bad_size"
+
+
+def test_a_missing_space_before_the_extra_field_is_not_accepted():
+    assert reason_of(combined() + "0.012") == "no_match"
+
+
+def test_extra_fields_still_count_towards_the_length_limit():
+    assert reason_of(combined() + " " + "x" * MAX_LINE_LENGTH) == "line_too_long"
+
+
+def test_a_long_run_of_extra_fields_is_fast():
+    text = combined() + ' "a"' * 1800
+    started = time.perf_counter()
+    for _ in range(200):
+        assert parse_line(text).status == 200
+    assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '"' * 4000,
+        combined() + ' "' * 3000,
+        combined() + " \\" * 3000,
+        combined()[:-1] + ' "' * 3000,
+    ],
+)
+def test_adversarial_trailing_text_is_handled_quickly(text):
+    started = time.perf_counter()
+    try:
+        parse_line(text)
+    except LogParseError:
+        pass
+    assert time.perf_counter() - started < 1.0
+
+
 # --- errors ---------------------------------------------------------------------------
 
 
@@ -224,7 +305,11 @@ def test_trailing_whitespace_and_line_endings_are_tolerated(ending):
         "192.0.2.1 only an ip",
         '192.0.2.1 - - [01/Jun/2025:10:00:00 +0000] "GET / HTTP/1.1"',
         line() + ' "only-one-quoted-field"',
+        # A Common-format line with extra fields is not recognised: only lines that carry the
+        # Combined referer and user agent may have fields after them. An unterminated user
+        # agent is not a user agent, so what follows it is not "after" it.
         line() + " 0.012",
+        combined(agent='"Mozilla/5.0').replace('"Mozilla/5.0', '"Mozilla/5.0 0.012'),
     ],
 )
 def test_text_that_is_not_a_log_line_is_no_match(text):
