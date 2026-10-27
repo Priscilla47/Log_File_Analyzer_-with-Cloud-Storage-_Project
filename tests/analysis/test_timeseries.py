@@ -385,6 +385,11 @@ def test_a_window_length_that_is_not_a_sensible_number_is_a_value_error(minutes)
         busiest_window([make(at(0))], minutes=minutes)
 
 
+def test_a_nan_window_length_gets_the_clear_message():
+    with pytest.raises(ValueError, match="at least 1"):
+        busiest_window([make(at(0))], minutes=float("nan"))
+
+
 def test_a_request_in_the_last_moments_of_year_9999_is_a_value_error_not_an_overflow():
     last = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
     with pytest.raises(ValueError, match="last date"):
