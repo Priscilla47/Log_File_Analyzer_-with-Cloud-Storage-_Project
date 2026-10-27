@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from loginsight.analysis.analyzer import analyze_entries
@@ -179,6 +180,22 @@ def test_empty_input_gives_an_empty_dataframe_with_the_log_entry_columns():
     df, _ = analyze_entries([])
     assert len(df) == 0
     assert list(df.columns) == LOG_ENTRY_FIELDS
+
+
+def test_the_empty_dataframe_has_the_same_column_types_as_a_full_one_for_the_numbers_and_time():
+    empty, _ = analyze_entries([])
+    full, _ = analyze_entries([log_entry(size=5)])
+    assert str(empty["time"].dtype).startswith("datetime64")
+    assert empty["time"].dt.tz is not None  # timezone-aware, like the full table
+    assert empty["status"].dtype == full["status"].dtype
+    assert empty["size"].dtype == full["size"].dtype
+
+
+def test_the_time_column_of_an_empty_table_can_be_used_like_a_full_one():
+    empty, _ = analyze_entries([])
+    assert empty["time"].dt.hour.tolist() == []
+    assert empty["time"].dt.floor("h").tolist() == []
+    assert pd.isna(empty["time"].min())  # the earliest of nothing is "not a time", not an error
 
 
 def test_empty_stats_can_be_written_as_json():

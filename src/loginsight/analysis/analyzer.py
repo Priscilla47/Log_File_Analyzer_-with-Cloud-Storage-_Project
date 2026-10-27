@@ -24,7 +24,10 @@ def analyze_entries(entries):
     entries = list(entries)
     rows = [e.to_dict() if isinstance(e, LogEntry) else e for e in entries]
     if not rows:
-        df = pd.DataFrame(columns=_COLUMNS)
+        # Typed like a table with rows, so code that works on the time column or adds up the
+        # numbers behaves the same way on an empty one.
+        df = pd.DataFrame(columns=_COLUMNS).astype({"status": "int64", "size": "int64"})
+        df["time"] = pd.to_datetime(df["time"], utc=True)
     else:
         df = pd.DataFrame(rows)
         if any(isinstance(e, LogEntry) for e in entries):
