@@ -1,7 +1,10 @@
 """Tests for the chart module: each function writes one PNG file and returns its path."""
 
 import ast
+import errno
+import os
 import struct
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -118,6 +121,159 @@ def test_only_the_requested_file_is_written_and_nothing_goes_to_the_working_fold
 def test_writing_into_a_directory_path_fails_with_an_os_error(plot, data, tmp_path):
     with pytest.raises(OSError):
         plot(data, tmp_path)
+
+
+# --- a failed save never damages anything --------------------------------------------
+
+PREVIOUS = b"PREVIOUS GOOD CHART"
+
+
+def directory_listing(folder):
+    return sorted(p.name for p in Path(folder).iterdir())
+
+
+@pytest.fixture
+def existing_chart(tmp_path):
+    target = tmp_path / "chart.png"
+    target.write_bytes(PREVIOUS)
+    return target
+
+
+def half_write_then_fail(path, data):
+    """Stand-in for the file write: leave half a file behind, then fail like a full disk."""
+    Path(path).write_bytes(data[: len(data) // 2])
+    raise OSError(errno.ENOSPC, "No space left on device")
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_failed_write_leaves_an_existing_chart_untouched(plot, data, existing_chart, monkeypatch):
+    monkeypatch.setattr(charts, "_write_bytes", half_write_then_fail)
+    with pytest.raises(OSError, match="No space left"):
+        plot(data, existing_chart)
+    assert existing_chart.read_bytes() == PREVIOUS
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_failed_write_leaves_no_temporary_file_behind(plot, data, existing_chart, monkeypatch):
+    monkeypatch.setattr(charts, "_write_bytes", half_write_then_fail)
+    with pytest.raises(OSError):
+        plot(data, existing_chart)
+    assert directory_listing(existing_chart.parent) == ["chart.png"]
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_failed_write_of_a_new_chart_creates_nothing(plot, data, tmp_path, monkeypatch):
+    monkeypatch.setattr(charts, "_write_bytes", half_write_then_fail)
+    with pytest.raises(OSError):
+        plot(data, tmp_path / "new.png")
+    assert directory_listing(tmp_path) == []
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_failed_render_leaves_an_existing_chart_untouched(
+    plot, data, existing_chart, monkeypatch
+):
+    def explode(self, *args, **kwargs):
+        raise RuntimeError("rendering failed")
+
+    monkeypatch.setattr(charts.Figure, "savefig", explode)
+    with pytest.raises(RuntimeError):
+        plot(data, existing_chart)
+    assert existing_chart.read_bytes() == PREVIOUS
+    assert directory_listing(existing_chart.parent) == ["chart.png"]
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_failure_when_putting_the_file_in_place_removes_the_temporary_file(
+    plot, data, existing_chart, monkeypatch
+):
+    def refuse(source, destination):
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(charts.os, "replace", refuse)
+    with pytest.raises(PermissionError):
+        plot(data, existing_chart)
+    assert existing_chart.read_bytes() == PREVIOUS
+    assert directory_listing(existing_chart.parent) == ["chart.png"]
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_an_interrupt_while_writing_also_cleans_up_and_is_not_swallowed(
+    plot, data, existing_chart, monkeypatch
+):
+    def interrupted(path, content):
+        Path(path).write_bytes(content[:10])
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(charts, "_write_bytes", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        plot(data, existing_chart)
+    assert existing_chart.read_bytes() == PREVIOUS
+    assert directory_listing(existing_chart.parent) == ["chart.png"]
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_directory_as_the_target_leaves_no_temporary_file(plot, data, tmp_path):
+    folder = tmp_path / "taken"
+    folder.mkdir()
+    with pytest.raises(OSError):
+        plot(data, folder)
+    assert directory_listing(tmp_path) == ["taken"]
+    assert directory_listing(folder) == []
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_the_chart_appears_complete_or_not_at_all(plot, data, tmp_path, monkeypatch):
+    """While the data is being written the real file is either the old one or absent."""
+    target = tmp_path / "chart.png"
+    seen = []
+    real_write = charts._write_bytes
+
+    def watch(path, content):
+        seen.append(target.exists())
+        real_write(path, content)
+        seen.append(target.exists())
+
+    monkeypatch.setattr(charts, "_write_bytes", watch)
+    plot(data, target)
+    assert seen == [False, False]
+    assert target.read_bytes().startswith(PNG_SIGNATURE)
+
+
+@pytest.mark.parametrize(("plot", "data"), CASES)
+def test_a_successful_save_leaves_only_the_chart(plot, data, tmp_path):
+    plot(data, tmp_path / "a.png")
+    plot(data, tmp_path / "a.png")
+    assert directory_listing(tmp_path) == ["a.png"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+def test_a_new_chart_gets_the_normal_permissions_for_a_new_file(tmp_path):
+    umask = os.umask(0)
+    os.umask(umask)
+    plot_status_codes(STATUS, tmp_path / "chart.png")
+    assert (tmp_path / "chart.png").stat().st_mode & 0o777 == 0o666 & ~umask
+
+
+def test_several_threads_saving_the_same_file_leave_one_valid_chart(tmp_path):
+    target = tmp_path / "shared.png"
+    errors = []
+
+    def worker(n):
+        try:
+            for _ in range(5):
+                plot_status_codes({"2xx": n + 1, "4xx": n}, target)
+        except Exception as error:  # noqa: BLE001 - report anything from the threads
+            errors.append(error)
+
+    threads = [threading.Thread(target=worker, args=(n,)) for n in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    assert png_size(target) == (800, 450)
+    assert directory_listing(tmp_path) == ["shared.png"]
 
 
 # --- no global state ------------------------------------------------------------------

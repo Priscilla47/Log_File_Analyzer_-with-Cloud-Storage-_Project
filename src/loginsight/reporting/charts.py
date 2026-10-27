@@ -4,8 +4,16 @@ Each function takes plain data (not a DataFrame), writes one PNG file to the pat
 and returns that path. Figures are built with matplotlib's object API and never touch
 ``pyplot``, so there is no global state: nothing to close, no figure left open if a write
 fails, no GUI backend, and nothing written to the current folder.
+
+A chart is rendered in memory and written to a hidden temporary file next to the target,
+which is then renamed over it in one step. So a failed save (a full disk, a crash while
+rendering) never leaves a half-written PNG and never damages a chart that was already there,
+and several writers to the same path cannot corrupt each other: the last one wins whole.
 """
 
+import io
+import os
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -48,10 +56,25 @@ def _no_data(title: str) -> Figure:
     return figure
 
 
+def _write_bytes(path: Path, data: bytes) -> None:
+    """Create ``path`` (which must not exist yet) and write ``data`` to it."""
+    with open(path, "xb") as file:
+        file.write(data)
+
+
 def _save(figure: Figure, output) -> Path:
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(path, format="png")
+    buffer = io.BytesIO()
+    figure.savefig(buffer, format="png")
+    # A unique hidden name in the same folder, so the final rename stays on one file system.
+    temporary = path.parent / f".{uuid.uuid4().hex}.tmp"
+    try:
+        _write_bytes(temporary, buffer.getvalue())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     return path
 
 
