@@ -255,6 +255,30 @@ def test_a_new_chart_gets_the_normal_permissions_for_a_new_file(tmp_path):
     assert (tmp_path / "chart.png").stat().st_mode & 0o777 == 0o666 & ~umask
 
 
+def test_a_second_save_in_the_middle_of_the_first_does_not_collide(tmp_path, monkeypatch):
+    """Two writers to one path, forced to overlap: both must succeed and the file stays valid."""
+    target = tmp_path / "shared.png"
+    real_write = charts._write_bytes
+    nested = []
+
+    def write_with_a_rival_in_the_middle(path, content):
+        real_write(path, content[:100])  # the first writer has written part of its file...
+        if not nested:
+            nested.append(True)
+            plot_status_codes({"2xx": 9}, target)  # ...when a second writer saves the same chart
+        real_write_rest(path, content)
+
+    def real_write_rest(path, content):
+        with open(path, "ab") as file:
+            file.write(content[100:])
+
+    monkeypatch.setattr(charts, "_write_bytes", write_with_a_rival_in_the_middle)
+    plot_status_codes({"2xx": 1}, target)
+    assert nested == [True]
+    assert png_size(target) == (800, 450)
+    assert directory_listing(tmp_path) == ["shared.png"]
+
+
 def test_several_threads_saving_the_same_file_leave_one_valid_chart(tmp_path):
     target = tmp_path / "shared.png"
     errors = []
