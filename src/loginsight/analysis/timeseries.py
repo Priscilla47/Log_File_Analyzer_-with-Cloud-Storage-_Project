@@ -19,12 +19,14 @@ BUCKET_SIZES = {"minute": timedelta(minutes=1), "hour": timedelta(hours=1)}
 # must not be able to ask for millions of them.
 MAX_BUCKETS = 100_000
 
-_ERROR_STATUS = 400  # status codes from here up count as errors
+# Status codes 400 to 599 are errors. Numbers outside 100 to 599 (a logged 000, say) are neither
+# successes nor errors, which matches summarize().
+_ERROR_STATUSES = range(400, 600)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TimeBucket:
-    """Requests in one minute or hour. ``start`` is in UTC; ``errors`` counts status 400+."""
+    """Requests in one minute or hour. ``start`` is in UTC; ``errors`` counts status 400 to 599."""
 
     start: datetime
     requests: int
@@ -78,7 +80,7 @@ def requests_per_bucket(entries: Iterable[LogEntry], bucket: str = "hour") -> li
     for entry in entries:
         start = _floor(_utc(entry.time), bucket)
         requests[start] += 1
-        if entry.status >= _ERROR_STATUS:
+        if entry.status in _ERROR_STATUSES:
             errors[start] += 1
 
     if not requests:

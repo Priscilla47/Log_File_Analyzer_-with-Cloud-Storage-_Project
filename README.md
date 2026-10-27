@@ -1,5 +1,7 @@
 # LogInsight
 
+[![CI](https://github.com/Priscilla47/Log_File_Analyzer_-with-Cloud-Storage-_Project/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Priscilla47/Log_File_Analyzer_-with-Cloud-Storage-_Project/actions/workflows/ci.yml)
+
 A web server access-log analyzer. Point it at an Apache or Nginx log and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
 
 > **Status:** early development. The project is being rebuilt from an earlier prototype, so most of what is described below is planned, not finished yet.
@@ -32,6 +34,13 @@ Run the tests and the linter:
 pytest          # fast tests
 pytest -m slow  # long-running checks
 ruff check .    # lint
+```
+
+Optionally, run the same checks automatically before every commit:
+
+```bash
+pre-commit install            # once per clone
+pre-commit run --all-files    # run on everything now
 ```
 
 ## Roadmap
