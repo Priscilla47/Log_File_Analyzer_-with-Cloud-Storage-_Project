@@ -235,6 +235,33 @@ def test_the_same_span_is_fine_with_hour_buckets():
     assert len(buckets) == 365 * 24 + 1
 
 
+# --- timestamps that cannot be converted ----------------------------------------------
+
+# Converting the very first or last instant that datetime can hold to UTC overflows when the
+# offset points outwards. The parser accepts such a line, so the aggregation has to refuse it
+# with a clear ValueError instead of a raw OverflowError.
+FIRST_INSTANT = datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=5)))
+LAST_INSTANT = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone(timedelta(hours=-5)))
+
+
+@pytest.mark.parametrize("when", [FIRST_INSTANT, LAST_INSTANT], ids=["year 1", "year 9999"])
+def test_a_timestamp_that_cannot_be_converted_to_utc_is_a_value_error(when):
+    with pytest.raises(ValueError, match="out of range"):
+        requests_per_bucket([make(at(0)), make(when)], "hour")
+
+
+@pytest.mark.parametrize("when", [FIRST_INSTANT, LAST_INSTANT], ids=["year 1", "year 9999"])
+def test_the_busiest_window_also_refuses_them(when):
+    with pytest.raises(ValueError, match="out of range"):
+        busiest_window([make(at(0)), make(when)])
+
+
+def test_the_extremes_that_can_be_converted_are_still_refused_by_the_range_limit():
+    entries = [make(at(0)), make(datetime(9999, 12, 31, 23, tzinfo=UTC))]
+    with pytest.raises(ValueError, match="time range too large"):
+        requests_per_bucket(entries, "hour")
+
+
 # --- ordering, input handling ---------------------------------------------------------
 
 
@@ -350,6 +377,18 @@ def test_no_entries_gives_none():
 def test_a_window_shorter_than_a_minute_is_rejected(minutes):
     with pytest.raises(ValueError):
         busiest_window([make(at(0))], minutes=minutes)
+
+
+@pytest.mark.parametrize("minutes", [float("nan"), float("inf"), 10**12, 1e300])
+def test_a_window_length_that_is_not_a_sensible_number_is_a_value_error(minutes):
+    with pytest.raises(ValueError):
+        busiest_window([make(at(0))], minutes=minutes)
+
+
+def test_a_request_in_the_last_moments_of_year_9999_is_a_value_error_not_an_overflow():
+    last = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
+    with pytest.raises(ValueError, match="last date"):
+        busiest_window([make(last)], minutes=5)
 
 
 def test_the_window_length_is_checked_even_for_empty_input():

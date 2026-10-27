@@ -46,9 +46,14 @@ class Window:
 
 
 def _utc(moment: datetime) -> datetime:
+    """``moment`` in UTC. Raises :class:`ValueError` for an instant too close to the limits of
+    ``datetime`` to be converted (year 1 or year 9999 with a time-zone offset)."""
     if moment.tzinfo is None:
         return moment.replace(tzinfo=timezone.utc)
-    return moment.astimezone(timezone.utc)
+    try:
+        return moment.astimezone(timezone.utc)
+    except OverflowError:
+        raise ValueError(f"timestamp out of range: {moment.isoformat()}") from None
 
 
 def _floor(moment: datetime, bucket: str) -> datetime:
@@ -97,20 +102,27 @@ def busiest_window(entries: Iterable[LogEntry], minutes: float = 5) -> Window | 
 
     Windows start at a request and are half open (a request exactly ``minutes`` minutes after
     the start is outside). Ties go to the earliest window. Raises :class:`ValueError` if
-    ``minutes`` is less than 1.
+    ``minutes`` is less than 1 or too large to represent.
     """
-    if minutes < 1:
+    if not minutes >= 1:  # also rejects NaN
         raise ValueError("minutes must be at least 1")
+    try:
+        length = timedelta(minutes=minutes)
+    except OverflowError:
+        raise ValueError(f"minutes is too large: {minutes}") from None
     times = sorted(_utc(entry.time) for entry in entries)
     if not times:
         return None
 
-    length = timedelta(minutes=minutes)
+    try:
+        ends = [start + length for start in times]
+    except OverflowError:
+        raise ValueError("the window runs past the last date that can be represented") from None
     best_start = best_count = 0
-    for index, start in enumerate(times):
-        count = bisect_left(times, start + length) - index
+    for index, end in enumerate(ends):
+        count = bisect_left(times, end) - index
         if count > best_count:
             best_start, best_count = index, count
 
     start = times[best_start]
-    return Window(start=start, end=start + length, requests=best_count)
+    return Window(start=start, end=ends[best_start], requests=best_count)
