@@ -163,6 +163,28 @@ def test_invalid_utf8_does_not_raise_and_the_line_is_still_read(tmp_path):
     assert result.stats.skipped == 0
 
 
+def test_utf8_byte_order_mark_is_dropped_from_the_first_address(tmp_path):
+    raw = b"\xef\xbb\xbf" + (good() + "\n" + good(status="404") + "\n").encode()
+    result = parse_file(write(tmp_path, raw))
+    assert [e.ip for e in result.entries] == ["192.0.2.1", "192.0.2.1"]
+    assert result.stats.skipped == 0
+
+
+def test_byte_order_mark_does_not_hide_a_bad_first_line(tmp_path):
+    result = parse_file(write(tmp_path, b"\xef\xbb\xbfjunk\n" + good().encode()))
+    assert result.stats.first_errors == [ParseIssue(line_number=1, reason="no_match", line="junk")]
+    assert len(result.entries) == 1
+
+
+def test_byte_order_mark_on_a_file_with_only_blank_lines(tmp_path):
+    stats = parse_file(write(tmp_path, b"\xef\xbb\xbf\n\n")).stats
+    assert (stats.total_lines, stats.skipped) == (0, 0)
+
+
+def test_a_file_without_a_byte_order_mark_is_unchanged(tmp_path):
+    assert parse_file(write(tmp_path, good())).entries[0].ip == "192.0.2.1"
+
+
 def test_a_fully_binary_file_is_all_skipped_without_raising(tmp_path):
     stats = parse_file(write(tmp_path, bytes(range(256)) * 4)).stats
     assert stats.parsed == 0
