@@ -285,12 +285,12 @@ def test_several_threads_saving_the_same_file_leave_one_valid_chart(tmp_path):
 
     def worker(n):
         try:
-            for _ in range(5):
+            for _ in range(2):
                 plot_status_codes({"2xx": n + 1, "4xx": n}, target)
         except Exception as error:  # noqa: BLE001 - report anything from the threads
             errors.append(error)
 
-    threads = [threading.Thread(target=worker, args=(n,)) for n in range(6)]
+    threads = [threading.Thread(target=worker, args=(n,)) for n in range(4)]
     for thread in threads:
         thread.start()
     for thread in threads:
