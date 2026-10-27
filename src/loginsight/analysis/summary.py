@@ -35,6 +35,10 @@ class Summary:
     ``first_time`` and ``last_time`` are ``None`` for no entries. Timestamps are compared as
     instants, so entries logged in different time zones can be mixed, but timestamps with and
     without a time zone cannot.
+
+    The dataclass is frozen, so a field cannot be reassigned, but the lists and dicts inside
+    it are ordinary ones and could still be changed in place. Treat a ``Summary`` as read-only.
+    :meth:`to_dict` returns copies, so its result is safe to modify.
     """
 
     total_requests: int

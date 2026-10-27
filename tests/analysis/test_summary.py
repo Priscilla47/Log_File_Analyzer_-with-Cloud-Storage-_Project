@@ -376,6 +376,26 @@ def test_to_dict_has_exactly_these_keys(main):
     }
 
 
+def test_changing_the_dict_from_to_dict_does_not_change_the_summary(main):
+    data = main.to_dict()
+    data["status_classes"]["2xx"] = 999
+    data["status_codes"]["200"] = 999
+    data["methods"]["GET"] = 999
+    data["top_ips"].clear()
+    data["top_paths"].append({"path": "/x", "requests": 1})
+    assert main.status_classes["2xx"] == 5
+    assert main.status_codes[200] == 5
+    assert main.methods["GET"] == 8
+    assert len(main.top_ips) == 4 and len(main.top_paths) == 4
+
+
+def test_two_calls_to_to_dict_give_independent_copies(main):
+    first, second = main.to_dict(), main.to_dict()
+    first["status_classes"]["4xx"] = 0
+    assert second["status_classes"]["4xx"] == 3
+    assert first is not second
+
+
 def test_the_input_is_not_modified():
     entries = list(MAIN)
     summarize(entries)
