@@ -16,7 +16,9 @@ Lines are numbered from 1. Normal lines have no entry.
 
 import argparse
 import json
+import os
 import random
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -428,6 +430,26 @@ def _count(text: str) -> int:
     return value
 
 
+def _same_file(first: Path, second: Path) -> bool:
+    """True when both paths name the same file, whatever the spelling, link or case."""
+    if first.exists() and second.exists():
+        return os.path.samefile(first, second)
+    return first.resolve() == second.resolve()
+
+
+def _check_destinations(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Fail with a usage error before generating anything if the files cannot be written."""
+    if args.labels is not None and _same_file(args.output, args.labels):
+        parser.error("--output and --labels must be different files")
+    for name, path in (("--output", args.output), ("--labels", args.labels)):
+        if path is None:
+            continue
+        if path.is_dir():
+            parser.error(f"{name} {path} is a directory, not a file")
+        if not path.parent.is_dir():
+            parser.error(f"{name} {path}: the folder {path.parent} does not exist")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
@@ -437,13 +459,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True, help="log file to write")
     parser.add_argument("--labels", type=Path, help="JSON Lines file for the attack labels")
     args = parser.parse_args(argv)
+    _check_destinations(parser, args)
 
     log_lines, labels = generate(args.seed, args.lines, args.attack_ratio, args.start)
 
-    args.output.write_text("".join(f"{x}\n" for x in log_lines), encoding="utf-8", newline="\n")
+    log_text = "".join(f"{x}\n" for x in log_lines)
+    labels_text = "".join(json.dumps(item) + "\n" for item in labels)
+    writes = [(args.output, log_text)]
     if args.labels is not None:
-        text = "".join(json.dumps(item) + "\n" for item in labels)
-        args.labels.write_text(text, encoding="utf-8", newline="\n")
+        writes.append((args.labels, labels_text))
+    for path, text in writes:
+        try:
+            path.write_text(text, encoding="utf-8", newline="\n")
+        except OSError as error:
+            # A failed write() carries no filename, so name the file we were writing.
+            print(f"{parser.prog}: error: cannot write {path}: {error.strerror}", file=sys.stderr)
+            return 1
     return 0
 
 
