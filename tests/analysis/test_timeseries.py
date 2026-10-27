@@ -170,12 +170,34 @@ def test_a_daylight_saving_change_is_handled_by_real_instants_not_clock_times():
 # --- errors ---------------------------------------------------------------------------
 
 
-def test_errors_are_status_400_and_above():
-    statuses = [200, 301, 399, 400, 404, 499, 500, 503, 600]
+def test_errors_are_status_400_to_599():
+    statuses = [200, 301, 399, 400, 404, 499, 500, 503, 599]
     entries = [make(at(0, i), status) for i, status in enumerate(statuses)]
     (bucket,) = requests_per_bucket(entries, "hour")
     assert bucket.requests == 9
-    assert bucket.errors == 6  # 400, 404, 499, 500, 503 and 600
+    assert bucket.errors == 6  # 400, 404, 499, 500, 503 and 599
+
+
+@pytest.mark.parametrize("status", [0, 99, 600, 700, 999])
+def test_statuses_outside_100_to_599_are_not_errors(status):
+    # Same rule as summarize(): such numbers are neither a success nor an error.
+    (bucket,) = requests_per_bucket([make(at(0), status)], "hour")
+    assert (bucket.requests, bucket.errors) == (1, 0)
+
+
+@pytest.mark.parametrize(("status", "is_error"), [(399, 0), (400, 1), (599, 1), (600, 0)])
+def test_the_error_range_boundaries(status, is_error):
+    (bucket,) = requests_per_bucket([make(at(0), status)], "hour")
+    assert bucket.errors == is_error
+
+
+def test_the_error_count_agrees_with_summarize_for_every_possible_status():
+    # Both modules must call the same responses errors. Skipped until summarize() is merged.
+    summary = pytest.importorskip("loginsight.analysis.summary")
+    for status in range(0, 1000):
+        entries = [make(at(0), status)]
+        (bucket,) = requests_per_bucket(entries, "hour")
+        assert bucket.errors == round(summary.summarize(entries).error_rate), status
 
 
 def test_error_rate_per_bucket():
