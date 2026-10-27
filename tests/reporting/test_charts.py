@@ -180,6 +180,22 @@ def test_empty_data_says_so_on_the_chart(plot, data, tmp_path, figure_spy):
     assert "No data" in texts
 
 
+@pytest.mark.parametrize(
+    ("plot", "empty", "full"),
+    [
+        (plot_status_codes, {}, STATUS),
+        (plot_traffic, [], BUCKETS),
+        (plot_top_paths, [], PATHS),
+    ],
+    ids=["status", "traffic", "paths"],
+)
+def test_an_empty_chart_keeps_the_title_of_the_real_one(plot, empty, full, tmp_path, figure_spy):
+    plot(full, tmp_path / "full.png")
+    full_title = axes_of(figure_spy).get_title()
+    plot(empty, tmp_path / "empty.png")
+    assert axes_of(figure_spy).get_title() == full_title != ""
+
+
 @pytest.mark.parametrize(("plot", "data"), CASES)
 def test_real_data_does_not_say_no_data(plot, data, tmp_path, figure_spy):
     plot(data, tmp_path / "c.png")
