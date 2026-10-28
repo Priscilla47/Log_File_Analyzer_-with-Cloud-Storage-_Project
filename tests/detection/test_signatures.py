@@ -8,15 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+
+from loginsight.detection.models import Detection, Severity, SignatureRule
+from loginsight.detection.ruleset import RuleSet, load_rules, parse_rules
 from loginsight.detection.signatures import (
     MAX_DECODE_PASSES,
     MAX_TARGET_LENGTH,
     detect_signatures,
     normalise,
 )
-
-from loginsight.detection.models import Detection, Severity, SignatureRule
-from loginsight.detection.ruleset import RuleSet, load_rules, parse_rules
 from loginsight.parsing.models import LogEntry
 from loginsight.parsing.parser import parse_file, parse_line
 
