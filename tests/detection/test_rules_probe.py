@@ -1,8 +1,9 @@
 """Tests for the default sensitive-file and admin-page probe rules.
 
-Each rule has requests it must catch (written by hand, not copied from the sample data
-generator) and near misses that share its words but are not probes. The rules look only at
-the path, never at the query string.
+The per-rule attack and near-miss cases live in ``rule_cases.toml`` and are checked by
+``test_rule_cases.py``. This file holds what is not per rule: the agreed severities, harmless
+requests, probe words in a query string alone (the rules look at the path only), known gaps,
+and the labelled sample logs.
 """
 
 import importlib.util
@@ -10,7 +11,6 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
 
 import pytest
 
@@ -34,176 +34,8 @@ SEVERITIES = {
     "probe-admin-panel": Severity.LOW,
 }
 
-ATTACKS = {
-    "probe-env-file": [
-        "/.env.production",
-        "/.env.local",
-        "/app/.env",
-        "/api/v1/.env.staging",
-        "/.ENV",
-        "/.env.bak",
-        "/.env?cache=1",
-        "/.env/",
-        "/.env;.jpg",
-        "/%2eenv",
-    ],
-    "probe-secret-file": [
-        "/.aws/config",
-        "/.ssh/id_rsa",
-        "/id_ed25519.pub",
-        "/.ssh/authorized_keys",
-        "/.htpasswd",
-        "/admin/.htaccess",
-        "/config/secrets.yml",
-        "/credentials.json",
-        "/wp-config.php~",
-        "/wp-config.old",
-        "/wp-config.php.save",
-        "/configuration.php.orig",
-        "/.npmrc",
-        "/.pgpass",
-        "/.bash_history",
-        "/.git-credentials",
-        "/.htpasswd?v=2",
-        "/.htpasswd;x=1",
-        "/.npmrc?x",
-    ],
-    "probe-vcs-dir": [
-        "/.git/HEAD",
-        "/.git",
-        "/old/.git/config",
-        "/.svn/entries",
-        "/.hg/store",
-        "/.bzr/branch",
-        "/.DS_Store",
-        "/images/.DS_Store",
-        "/.git;/config",
-        "/CVS/Entries",
-        "/cvs/root",
-        "/CVS/Repository",
-        "/CVS/Entries?x=1",
-        "/CVS/Entries;x",
-        "/CVS/Root/",
-        "/.DS_Store?v=1",
-        "/.DS_Store;x",
-        "/.git?x",
-    ],
-    "probe-backup-archive": [
-        "/backup.sql",
-        "/db.sql",
-        "/dump.sql.gz",
-        "/site.tar.gz",
-        "/www.zip",
-        "/database.sql",
-        "/db_backup_2025-10-27.tgz",
-        "/site-backup.rar",
-        "/wwwroot.7z",
-        "/public_html.zip",
-        "/index.php.bak",
-        "/config.old",
-        "/index.php.orig",
-        "/.index.php.swp",
-        "/index.php~",
-        "/BACKUP.ZIP",
-        "/backup.zip;jsessionid=1",
-        "/index.php.save",
-        "/index.php.backup",
-        "/index.php.bak?x=1",
-        "/config.old;x",
-        "/index.php~?x=1",
-        "/index.php~;x",
-        "/bak.zip",
-        "/htdocs.zip",
-        "/export.sql",
-        "/site.tar",
-        "/site.bz2",
-        "/db.dump",
-        "/db.sql?dl=1",
-        "/db.sql;x",
-    ],
-    "probe-diagnostics": [
-        "/phpinfo",
-        "/info.php",
-        "/server-status",
-        "/server-info",
-        "/server-status?auto",
-        "/actuator/env",
-        "/actuator/heapdump",
-        "/_profiler/",
-        "/elmah.axd",
-        "/debug/pprof/",
-        "/phpinfo.php5",
-        "/trace.axd",
-        "/_debugbar/open",
-    ],
-    "probe-admin-panel": [
-        "/wp-login.php",
-        "/wp-admin/",
-        "/wp-admin/install.php",
-        "/xmlrpc.php",
-        "/phpmyadmin",
-        "/phpMyAdmin/index.php",
-        "/phpmyadmin-4.9.0/",
-        "/pma/",
-        "/myadmin/",
-        "/adminer.php",
-        "/manager/html",
-    ],
-}
 
 # Requests that share a rule's words but are not probes.
-NEAR_MISSES = {
-    "probe-env-file": [
-        "/environment",
-        "/blog/using-env-files",
-        "/.envelope",
-        "/.environment",
-        "/env",
-    ],
-    "probe-secret-file": [
-        "/credentials",
-        "/credentials-policy",
-        "/secret-santa",
-        "/ssh-keys-guide",
-        "/id_card",
-    ],
-    "probe-vcs-dir": [
-        "/.github/workflows/ci.yml",
-        "/.gitignore",
-        "/git/intro",
-        "/svn-vs-git",
-        "/cvs/intro",
-        "/cvs-tutorial",
-        "/github/readme",
-    ],
-    "probe-backup-archive": [
-        "/products/backup-power-supply",
-        "/downloads/app-v2.zip",
-        "/files/report.zip",
-        "/files/photos.tar.gz",
-        "/old/spring-sale",
-        "/backup",
-        "/backup.html",
-        "/db",
-        "/sitemap.xml",
-        "/~user/page.html",
-    ],
-    "probe-diagnostics": [
-        "/blog/what-is-phpinfo",
-        "/docs/server-status-codes",
-        "/server-side-rendering",
-        "/actuator/health",
-        "/actuator/info",
-    ],
-    "probe-admin-panel": [
-        "/admin-guide",
-        "/blog/phpmyadmin-tutorial",
-        "/docs/xmlrpc-explained",
-        "/pma-results",
-        "/wp-content/uploads/a.jpg",
-        "/wp-json/wp/v2/posts",
-    ],
-}
 
 # The query string is never looked at by these rules: a probe-like word there is a different
 # problem (file inclusion), which the path traversal rules handle.
@@ -291,22 +123,6 @@ def entry_for(target):
     )
 
 
-def variants(target):
-    found = {"as written": target, "swapped case": target.swapcase()}
-    if "%" not in target:
-        found["encoded"] = quote(target, safe="")
-        found["encoded twice"] = quote(quote(target, safe=""), safe="")
-    return found
-
-
-CASES = [(rule_id, target) for rule_id, targets in ATTACKS.items() for target in targets]
-VARIANT_CASES = [
-    pytest.param(rule_id, name, text, id=f"{rule_id}|{name}|{target[:36]}")
-    for rule_id, target in CASES
-    for name, text in variants(target).items()
-]
-
-
 # --- the rule set ---------------------------------------------------------------------
 
 
@@ -319,38 +135,7 @@ def test_every_probe_rule_is_a_sensitive_file_probe_with_a_real_description():
     assert all(len(rule.description) > 25 for rule in PROBES.values())
 
 
-def test_every_probe_rule_has_enough_attack_and_near_miss_examples():
-    assert set(ATTACKS) == set(PROBES) == set(NEAR_MISSES)
-    for rule_id in PROBES:
-        assert len(ATTACKS[rule_id]) >= 4, rule_id
-        assert len(NEAR_MISSES[rule_id]) >= 3, rule_id
-
-
-def test_the_attack_examples_are_not_copied_from_the_sample_data_generator():
-    spec = importlib.util.spec_from_file_location(
-        "generate_logs", ROOT / "scripts" / "generate_logs.py"
-    )
-    generator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generator)
-    assert {target for _, target in CASES}.isdisjoint(generator._SENSITIVE_PAYLOADS)
-
-
-# --- attacks are caught ---------------------------------------------------------------
-
-
-@pytest.mark.parametrize(("rule_id", "name", "target"), VARIANT_CASES)
-def test_each_probe_is_caught_by_its_rule_however_it_is_written(rule_id, name, target):
-    assert matches(rule_id, target), (name, normalise(target))
-
-
-@pytest.mark.parametrize(("rule_id", "target"), CASES)
-def test_the_rule_fires_through_the_whole_engine_with_its_severity(rule_id, target):
-    found = detect_signatures([entry_for("/ok"), entry_for(target)], load_rules())
-    ours = [d for d in found if d.rule_id == rule_id]
-    assert len(ours) == 1
-    assert (ours[0].first_index, ours[0].label) == (1, "sensitive_file_probe")
-    assert ours[0].severity is SEVERITIES[rule_id]
-    assert ours[0].evidence == f"GET {target} HTTP/1.1"[:200]
+# --- the examples from the issue ------------------------------------------------------
 
 
 def test_the_examples_from_the_issue_have_the_severities_in_the_table():
@@ -378,25 +163,13 @@ def test_a_harmless_request_fires_no_rule_at_all(target):
     assert fired(target) == []
 
 
-@pytest.mark.parametrize(
-    ("rule_id", "target"), [(r, t) for r, targets in NEAR_MISSES.items() for t in targets]
-)
-def test_each_rules_near_misses_do_not_fire_that_rule(rule_id, target):
-    assert not matches(rule_id, target)
-
-
 @pytest.mark.parametrize("target", QUERY_ONLY)
 def test_a_probe_word_in_the_query_string_alone_fires_no_probe_rule(target):
     assert probes_fired(target) == []
 
 
-@pytest.mark.parametrize("target", [t for ts in ATTACKS.values() for t in ts if "?" not in t][:40])
-def test_a_probe_hidden_in_the_query_of_another_page_is_not_a_probe(target):
-    assert probes_fired("/index.php?file=" + target) == []
-
-
 def test_there_are_plenty_of_harmless_examples():
-    assert len(HARMLESS) + sum(len(v) for v in NEAR_MISSES.values()) >= 60
+    assert len(HARMLESS) >= 25
 
 
 # --- several rules, one request -------------------------------------------------------

