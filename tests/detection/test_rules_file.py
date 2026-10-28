@@ -224,9 +224,15 @@ def test_an_unknown_behaviour_table_is_rejected():
     assert "brute_forse" in message
 
 
-def test_an_unknown_behaviour_key_is_rejected():
-    message = only_problem("[behaviour.scanner]\nthreshhold = 3\n")
-    assert "threshhold" in message and "behaviour.scanner" in message
+@pytest.mark.parametrize("table", ["brute_force", "scanner"])
+def test_an_unknown_behaviour_key_is_rejected(table):
+    message = only_problem(f"[behaviour.{table}]\nthreshhold = 3\n")
+    assert "threshhold" in message and f"behaviour.{table}" in message
+
+
+def test_a_key_that_belongs_to_the_other_behaviour_table_is_rejected():
+    assert "user_agents" in only_problem('[behaviour.brute_force]\nuser_agents = ["x"]\n')
+    assert "login_paths" in only_problem('[behaviour.scanner]\nlogin_paths = ["/x"]\n')
 
 
 def test_behaviour_must_be_a_table_and_each_entry_a_table():
