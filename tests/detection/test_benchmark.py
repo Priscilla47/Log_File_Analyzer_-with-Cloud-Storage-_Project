@@ -223,6 +223,33 @@ def test_a_behavioural_detection_is_never_counted_as_a_signature_detection():
     assert scored(labels, [burst])["sql_injection"].found == 0
 
 
+def test_two_detections_on_one_burst_find_it_once_but_are_both_true_positives():
+    labels = [label(n, "scanner", ip="198.51.100.5") for n in (3, 4, 5)]
+    burst = finding(
+        2, "scanner", rule_id="behaviour-scanner-burst", ip="198.51.100.5", last=4, count=3
+    )
+    tool = finding(
+        2, "scanner", rule_id="behaviour-scanner-tool", ip="198.51.100.5", last=4, count=3
+    )
+    s = scored(labels, [burst, tool])["scanner"]
+    assert (s.labelled, s.found, s.true_positives) == (1, 1, 2)
+    assert s.recall == 1.0, "recall is bursts found, never above 1"
+    assert s.precision == 1.0
+
+
+def test_a_detection_is_behavioural_because_of_its_rule_not_its_label():
+    labels = [label(1, "sql_injection")]
+    pretender = finding(0, "sql_injection", rule_id="behaviour-brute-force")
+    assert scored(labels, [pretender])["sql_injection"].found == 0
+
+
+def test_a_signature_rule_is_never_scored_as_a_behavioural_detection():
+    labels = [label(1, "scanner", ip="198.51.100.5")]
+    pretender = finding(0, "scanner", rule_id="probe-admin-panel", ip="198.51.100.5")
+    s = scored(labels, [pretender])["scanner"]
+    assert (s.found, s.true_positives, s.cross_class, s.false_positives) == (0, 0, 0, 0)
+
+
 def test_nothing_labelled_and_nothing_found_scores_one_everywhere():
     s = scored([], [])
     assert set(s) == set(LABELS)
