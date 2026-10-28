@@ -14,6 +14,7 @@ authors = [{ name = "Priscilla Kanodi" }]
 dependencies = [
     "pandas>=2.0",
     "matplotlib>=3.7",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"loginsight.detection" = ["rules/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
