@@ -169,6 +169,16 @@ def test_a_404_for_a_malformed_request_with_no_path_is_ignored():
     assert detect_scanners(entries) == []
 
 
+def test_requests_with_no_path_do_not_count_as_a_path_of_their_own():
+    # 14 different missing paths plus 5 malformed 404s: if the empty path counted it would be
+    # a 15th "path" and tip this over the threshold.
+    malformed = [
+        LogEntry(**{**request(seconds=20 + n).to_dict(), "method": "", "path": "", "request": "-"})
+        for n in range(5)
+    ]
+    assert detect_scanners(misses(14, spacing=1) + malformed) == []
+
+
 # --- the burst rule: what counts ------------------------------------------------------
 
 
@@ -415,6 +425,26 @@ def test_a_long_request_in_the_evidence_is_cut_to_200_characters():
     assert quoted.endswith(")")
     assert len(quoted) == 200 + 1  # 200 characters of the request, then the closing bracket
     assert quoted.startswith("GET /aaaa")
+
+
+def test_a_tool_name_in_the_settings_is_matched_whatever_its_case():
+    assert len(tool(detect([request(agent="nikto/2.1.6")], user_agents=("NIKTO",)))) == 1
+    assert len(tool(detect([request(agent="NIKTO/2.1.6")], user_agents=("Nikto",)))) == 1
+
+
+def test_requests_from_a_known_tool_do_not_count_as_missing_pages_unless_they_were_404s():
+    entries = [request(seconds=n, path=f"/page{n}", status=200, agent="nikto") for n in range(20)]
+    found = detect_scanners(entries)
+    assert burst(found) == []
+    assert [d.rule_id for d in found] == [RULE_ID_SCANNER_TOOL]
+
+
+def test_a_tool_that_hits_missing_pages_is_both_counted_as_a_burst_and_as_a_tool():
+    entries = [request(seconds=n, path=f"/page{n}", status=404, agent="nikto") for n in range(20)]
+    assert sorted(d.rule_id for d in detect_scanners(entries)) == [
+        RULE_ID_SCANNER_BURST,
+        RULE_ID_SCANNER_TOOL,
+    ]
 
 
 def test_the_list_of_tools_comes_from_the_settings():
