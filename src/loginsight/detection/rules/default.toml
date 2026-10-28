@@ -153,6 +153,57 @@ description = "Reverse-shell building blocks (/dev/tcp, nc -e, bash -i, ${IFS}, 
 pattern = '''/dev/(?:tcp|udp)/|\bnc(?:at)?\b[^|;&]{0,40}\s-\w*e\b|\bbash\s+-i\b|\$\{?ifs\}?|\bmkfifo\b|\bsocat\b[^|]{0,40}exec:'''
 
 # ---------------------------------------------------------------------------------------------
+# Probes for sensitive files and admin pages (sensitive_file_probe)
+#
+# These look only at the PATH: every pattern starts with ^[^?]* so it cannot match inside the
+# query string (a request like /index.php?file=.env is a file-inclusion attempt, which the
+# path_traversal rules handle). Most real sites have no such files, so a request for one is
+# a strong signal. Pages that real sites do have (WordPress login, phpMyAdmin) score low.
+# ---------------------------------------------------------------------------------------------
+
+[[signature]]
+id = "probe-env-file"
+label = "sensitive_file_probe"
+severity = "high"
+description = "A request for a .env file (.env, .env.local, .env.production ...) holding secrets"
+pattern = '''^[^?]*/\.env(?:\.[a-z0-9_-]+)*(?:[/;?]|$)'''
+
+[[signature]]
+id = "probe-secret-file"
+label = "sensitive_file_probe"
+severity = "high"
+description = "Credential and key files: AWS credentials, SSH keys, .htpasswd, database.yml, wp-config backups"
+pattern = '''^[^?]*/(?:\.aws/(?:credentials|config)|(?:\.ssh/)?id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|\.ssh/(?:authorized_keys|known_hosts)|\.(?:htpasswd|htaccess|pgpass|npmrc|netrc|bash_history|git-credentials|my\.cnf)|config/(?:database|secrets|credentials)\.yml|(?:credentials|secrets)\.(?:json|ya?ml)|(?:wp-config|configuration)(?:\.php)?(?:\.(?:bak|old|orig|save|swp|txt|zip|copy|dist|backup)|~))(?:$|[?;])'''
+
+[[signature]]
+id = "probe-vcs-dir"
+label = "sensitive_file_probe"
+severity = "high"
+description = "A version-control directory (.git, .svn, .hg, .bzr, CVS/Entries) or a .DS_Store file, which leak source code"
+pattern = '''^[^?]*/\.(?:git|svn|hg|bzr)(?:[/;?]|$)|^[^?]*/cvs/(?:entries|root|repository)(?:[/;?]|$)|^[^?]*/\.ds_store(?:$|[?;])'''
+
+[[signature]]
+id = "probe-backup-archive"
+label = "sensitive_file_probe"
+severity = "medium"
+description = "A backup copy (.bak, .old, .orig, .swp, name~) or a dump or archive whose name says backup, dump, db or site"
+pattern = '''^[^?]*/[^/?]+\.(?:bak|old|orig|swp|save|backup)(?:$|[?;])|^[^?]*/[^/?]+\.[a-z]{1,5}~(?:$|[?;])|^[^?]*/[^/?]*(?<![a-z0-9])(?:backups?|bak|dumps?|db|database|site|www|wwwroot|htdocs|public_html|export)(?![a-z0-9])[^/?]*\.(?:sql|zip|tar|tgz|gz|bz2|7z|rar|dump)(?:$|[?;])'''
+
+[[signature]]
+id = "probe-diagnostics"
+label = "sensitive_file_probe"
+severity = "medium"
+description = "Diagnostic pages that reveal the server set-up: phpinfo, server-status, server-info, actuator, profilers"
+pattern = '''^[^?]*/(?:phpinfo(?:\.php\d?)?|info\.php|server-(?:status|info)|elmah\.axd|trace\.axd|_profiler|_debugbar|debug/pprof|actuator/(?:env|heapdump|threaddump|configprops|beans|mappings|loggers|httptrace))(?:[/;?]|$)'''
+
+[[signature]]
+id = "probe-admin-panel"
+label = "sensitive_file_probe"
+severity = "low"
+description = "Login and admin pages of common software (WordPress, phpMyAdmin, Tomcat manager), often probed by scanners"
+pattern = '''^[^?]*/(?:wp-login\.php|wp-admin|xmlrpc\.php|phpmyadmin(?:[-_]?\d[\w.-]*)?|pma|myadmin|adminer(?:\.php)?|manager/html)(?:[/;?]|$)'''
+
+# ---------------------------------------------------------------------------------------------
 # Behavioural rules look across requests from one address instead of at a single request.
 # Every key is optional: a missing one keeps the default shown here.
 # ---------------------------------------------------------------------------------------------
