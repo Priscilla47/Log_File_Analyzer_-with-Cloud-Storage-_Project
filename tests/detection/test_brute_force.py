@@ -93,6 +93,14 @@ def test_a_burst_inside_a_long_slow_trickle_is_the_whole_run():
     assert found.time == T0
 
 
+def test_a_dense_window_that_starts_in_the_middle_of_a_run_is_found():
+    # Times 0, 100, 150, 220 with threshold 3 and a 120 s window: only 100, 150 and 220 fit
+    # in one window, so the window has to start at the second failure, not the first or third.
+    entries = [request(seconds=s) for s in (0, 100, 150, 220)]
+    (found,) = detect(entries, threshold=3)
+    assert found.count == 4
+
+
 def test_a_fraction_of_a_second_is_kept():
     assert len(detect(failures(10, spacing=0.0001))) == 1
 
@@ -380,6 +388,16 @@ def test_a_timestamp_without_a_time_zone_is_taken_to_be_utc():
     assert len(detect_brute_force(naive)) == 1
 
 
+def test_naive_and_aware_timestamps_can_be_mixed_and_naive_ones_count_as_utc():
+    entries = []
+    for n in range(10):
+        when = datetime(2025, 6, 1, 12, 0, n)
+        entries.append(request(when=when if n % 2 == 0 else when.replace(tzinfo=UTC)))
+    (found,) = detect_brute_force(entries)
+    assert found.count == 10
+    assert found.evidence.startswith("10 failed logins in 9 s")
+
+
 def test_a_timestamp_that_cannot_be_converted_is_a_value_error():
     far = datetime(1, 1, 1, tzinfo=timezone(timedelta(hours=5)))
     with pytest.raises(ValueError, match="out of range"):
@@ -419,6 +437,16 @@ def test_detections_are_ordered_by_position_then_address():
     assert [d.ip for d in detect_brute_force(entries)] == ["203.0.113.9", "203.0.113.1"]
     both = failures(10, ip="203.0.113.9") + failures(10, ip="203.0.113.1")
     assert [d.first_index for d in detect_brute_force(both)] == [0, 10]
+
+
+def test_detections_follow_position_even_when_an_address_was_seen_earlier():
+    # 203.0.113.1 has one early, harmless failure, so it is seen first, but its burst is later.
+    early = [request(ip="203.0.113.1", seconds=0)]
+    burst_b = failures(10, ip="203.0.113.2", start=1000)
+    burst_a = failures(10, ip="203.0.113.1", start=2000)
+    found = detect_brute_force(early + burst_b + burst_a)
+    assert [d.ip for d in found] == ["203.0.113.2", "203.0.113.1"]
+    assert [d.first_index for d in found] == [1, 11]
 
 
 # --- settings -------------------------------------------------------------------------
