@@ -303,6 +303,19 @@ def test_detections_come_in_entry_order_then_rule_order():
     ]
 
 
+def test_detections_follow_the_input_order_not_the_order_of_addresses_or_times():
+    late = LogEntry(**{**entry("/p", "union select", ip="203.0.113.9").to_dict(), "time": WHEN})
+    entries = [
+        entry("/p", "union select", ip="203.0.113.9"),
+        entry("/p", "union select", ip="192.0.2.1"),
+        entry("/p", "union select", ip="198.51.100.5"),
+        late,
+    ]
+    found = detect_signatures(entries, [rule()])
+    assert [d.first_index for d in found] == [0, 1, 2, 3]
+    assert [d.ip for d in found] == ["203.0.113.9", "192.0.2.1", "198.51.100.5", "203.0.113.9"]
+
+
 def test_the_index_is_the_position_in_the_input_whatever_matched_before():
     entries = [entry("/ok")] * 5 + [entry("/p", "union select")]
     assert detect_signatures(entries, [rule()])[0].first_index == 5
