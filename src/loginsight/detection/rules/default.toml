@@ -1,0 +1,32 @@
+# Default detection rules for LogInsight.
+#
+# A rule is data, so adding one means adding an entry here and a matching test case. Patterns
+# are regular expressions, matched ignoring case against the decoded path and query string of
+# each request. Use single quotes for a pattern so backslashes are kept as written.
+#
+# Fields of a [[signature]] rule (all are required):
+#   id           lower-case letters, digits and single hyphens, unique in this file
+#   label        sql_injection, xss, path_traversal, command_injection or sensitive_file_probe
+#   severity     low, medium, high or critical
+#   description  one line saying what the rule catches
+#   pattern      the regular expression (at most 500 characters)
+
+[[signature]]
+id = "sqli-union-select"
+label = "sql_injection"
+severity = "high"
+description = "UNION SELECT used to read data from other tables"
+pattern = '''union\s+(?:all\s+)?select\b'''
+
+# Behavioural rules look across requests from one address instead of at a single request.
+# Every key is optional: a missing one keeps the default shown here.
+
+[behaviour.brute_force]
+threshold = 10          # failed logins (401 or 403) ...
+window_seconds = 120    # ... within this many seconds
+login_paths = ["/login", "/signin", "/wp-login.php"]
+
+[behaviour.scanner]
+threshold = 15          # distinct 404 paths ...
+window_seconds = 60     # ... within this many seconds
+user_agents = ["sqlmap", "nikto", "nmap", "masscan", "dirbuster", "gobuster", "wfuzz", "nuclei"]
