@@ -2,7 +2,9 @@
 #
 # A rule is data, so adding one means adding an entry here and a matching test case. Patterns
 # are regular expressions, matched ignoring case against the decoded path and query string of
-# each request. Use single quotes for a pattern so backslashes are kept as written.
+# each request (percent-encoding removed up to three times, "+" turned into a space, runs of
+# whitespace collapsed to one space, everything lower-cased). Use triple single quotes for a
+# pattern so backslashes are kept as written.
 #
 # Fields of a [[signature]] rule (all are required):
 #   id           lower-case letters, digits and single hyphens, unique in this file
@@ -10,16 +12,150 @@
 #   severity     low, medium, high or critical
 #   description  one line saying what the rule catches
 #   pattern      the regular expression (at most 500 characters)
+#
+# Rules are written from the attack technique, and each one is kept narrow so ordinary traffic
+# that only looks similar ("select shoes", "union jack", "report.pdf") is left alone. Keep
+# patterns simple: no nested repeats such as (a+)+, which can be slow on hostile input.
+
+# ---------------------------------------------------------------------------------------------
+# SQL injection (high)
+# ---------------------------------------------------------------------------------------------
 
 [[signature]]
 id = "sqli-union-select"
 label = "sql_injection"
 severity = "high"
-description = "UNION SELECT used to read data from other tables"
-pattern = '''union\s+(?:all\s+)?select\b'''
+description = "UNION SELECT, also with comments instead of spaces, used to read other tables"
+pattern = '''union(?:\s|/\*[^*]*\*/)+(?:all(?:\s|/\*[^*]*\*/)+)?select\b'''
 
+[[signature]]
+id = "sqli-tautology"
+label = "sql_injection"
+severity = "high"
+description = "A quote then OR, AND or || with an always-true comparison ('1'='1, or 1=1), to bypass a condition"
+pattern = '''['"](?:\s|/\*[^*]*\*/)*\)*\s*(?:(?:or|and)(?:(?:\s|/\*[^*]*\*/)+|(?=['"(]))|\|\||&&)\(*\s*['"]?[\w@.-]+['"]?\s*\)*\s*(?:=|!=|<>|<|>|like\b)|['"]\s*(?:or|and)\s*['"]{2}\s*=|\b(?:or|and|having)(?:\s|/\*[^*]*\*/)+(\d+)\s*=\s*\1\b'''
+
+[[signature]]
+id = "sqli-quote-comment"
+label = "sql_injection"
+severity = "high"
+description = "A quote followed by a SQL comment (--, # or /*), which cuts off the rest of a query"
+pattern = '''['"]\s*\)*\s*(?:--|#|/\*)'''
+
+[[signature]]
+id = "sqli-time-delay"
+label = "sql_injection"
+severity = "high"
+description = "Time-delay functions (sleep, pg_sleep, benchmark, waitfor delay) used for blind injection"
+pattern = '''\b(?:pg_)?sleep\s*\(\s*\d|\bbenchmark\s*\(\s*\d+\s*,|\bwaitfor\s+delay\s+['"]|\bdbms_pipe\.receive_message\s*\('''
+
+[[signature]]
+id = "sqli-information-schema"
+label = "sql_injection"
+severity = "high"
+description = "Database catalogue tables and file functions used to map or read the database"
+pattern = '''\binformation_schema\b|\b(?:sqlite_master|pg_catalog|pg_tables|sysobjects|syscolumns|all_tables|user_tables)\b|\bmysql\.user\b|\bsys\.(?:tables|columns|objects|databases)\b|\bload_file\s*\(|\binto\s+(?:out|dump)file\b'''
+
+[[signature]]
+id = "sqli-stacked-statement"
+label = "sql_injection"
+severity = "high"
+description = "A second, destructive statement after a semicolon (; DROP TABLE ...) or xp_cmdshell"
+pattern = '''; ?(?:drop\s+(?:table|database|view|index)|delete\s+from|insert\s+into|update\s+\w+\s+set|truncate\s+table|alter\s+table|create\s+(?:table|user|database)|exec(?:ute)?\b|shutdown\b|declare\s+@)|\bxp_cmdshell\b'''
+
+# ---------------------------------------------------------------------------------------------
+# Cross-site scripting (medium)
+# ---------------------------------------------------------------------------------------------
+
+[[signature]]
+id = "xss-script-tag"
+label = "xss"
+severity = "medium"
+description = "An opening or closing <script> tag in the request"
+pattern = '''<\s*/?\s*script\b'''
+
+[[signature]]
+id = "xss-event-handler-in-tag"
+label = "xss"
+severity = "medium"
+description = "An event handler attribute (onerror=, onload=, onmouseover= ...) inside an HTML tag"
+pattern = '''<[a-z][^>]{0,200}?\bon(?:error|load|click|dblclick|mouse\w+|focus\w*|blur|key(?:down|up|press)|toggle|pointer\w+|animation\w+|transition\w+|input|change|submit|begin|start|wheel|scroll|drag\w*|drop|resize|select|message|pageshow|unload|hashchange|contextmenu|copy|paste|cut|play|pause|ended|show|search|invalid|reset|abort)\s*='''
+
+[[signature]]
+id = "xss-event-handler-after-quote"
+label = "xss"
+severity = "medium"
+description = "An event handler attribute added after a closing quote, which breaks out of an attribute"
+pattern = '''['"`]\s*(?:/\s*)?on(?:error|load|click|dblclick|mouse\w+|focus\w*|blur|key(?:down|up|press)|toggle|pointer\w+|animation\w+|transition\w+|input|change|submit|begin|start|wheel|scroll|drag\w*|drop|resize|select|message|pageshow|unload|hashchange|contextmenu|copy|paste|cut|play|pause|ended|show|search|invalid|reset|abort)\s*='''
+
+[[signature]]
+id = "xss-script-uri"
+label = "xss"
+severity = "medium"
+description = "A javascript: or vbscript: URL that calls a function, or a data: URL holding HTML"
+pattern = '''\b(?:javascript|vbscript|livescript)\s*:\s*[\w.$\[\]'"`]*\s*\(|\bdata\s*:\s*text/html'''
+
+[[signature]]
+id = "xss-embedding-tag"
+label = "xss"
+severity = "medium"
+description = "Tags that embed or redirect to other content (iframe, object, embed, meta refresh, base href)"
+pattern = '''<\s*(?:iframe|frameset|object|embed|applet)\b|<\s*(?:meta|base|link)\b[^>]{0,200}?\b(?:http-equiv|href)\s*='''
+
+# ---------------------------------------------------------------------------------------------
+# Path traversal and local file inclusion (high)
+# ---------------------------------------------------------------------------------------------
+
+[[signature]]
+id = "traversal-dotdot"
+label = "path_traversal"
+severity = "high"
+description = "Parent-directory steps (../ or ..\\ with a backslash) in any encoding, including ....// and ..;/"
+pattern = '''(?:^|[/\\=?&.;:])\.\.[/\\;]|[/\\]\.\.$'''
+
+[[signature]]
+id = "traversal-sensitive-file"
+label = "path_traversal"
+severity = "high"
+description = "System files that a traversal or file-inclusion attack goes after (/etc/passwd, win.ini ...)"
+pattern = '''/etc/(?:passwd|shadow|group|gshadow|hosts|hostname|issue|motd|sudoers|fstab|crontab|resolv\.conf)\b|/proc/(?:self|\d+)/(?:environ|cmdline|maps|status|fd)|/var/log/(?:auth|syslog|messages|secure|apache2?|nginx|httpd)|\b(?:boot|win)\.ini\b|\bwindows[/\\]system32\b|\bsystem32[/\\](?:config|drivers|cmd)'''
+
+[[signature]]
+id = "traversal-file-wrapper"
+label = "path_traversal"
+severity = "high"
+description = "PHP and other stream wrappers (php://filter, expect://, file:///) used for file inclusion"
+pattern = '''\b(?:php|expect|phar|zip|glob|gopher|ssh2|jar)://|\bfile:///|\bdata://'''
+
+# ---------------------------------------------------------------------------------------------
+# Command injection (critical)
+# ---------------------------------------------------------------------------------------------
+
+[[signature]]
+id = "cmdi-separator-command"
+label = "command_injection"
+severity = "critical"
+description = "A shell separator (;  ||  |  &&  `  $() ) followed by a command such as cat, id or wget"
+pattern = '''(?:;|\|\|?|&&|`|\$\()\s*(?:cat|ls|id|whoami|uname|pwd|wget|curl|nc|ncat|netcat|bash|sh|zsh|dash|python[23]?|perl|php|ruby|chmod|chown|rm|cp|mv|echo|ping|nslookup|dig|telnet|ifconfig|ipconfig|ps|kill|sleep|base64|sudo|env|printenv|find|grep|tar|whois|hostname|netstat|lsof|tail|head|awk|sed|xargs|nohup|crontab|passwd|useradd|mkfifo|certutil|powershell|cmd|net|systeminfo|tasklist)(?=\s|[;|&)`"'<>$]|$)'''
+
+[[signature]]
+id = "cmdi-shell-path"
+label = "command_injection"
+severity = "critical"
+description = "A path to a shell or interpreter (/bin/sh, /usr/bin/env), or cmd /c and powershell -command"
+pattern = '''/bin/(?:ba|z|da|k|c|tc|a)?sh\b|/usr/bin/(?:env|python[23]?|perl|php|ruby|nc|ncat|wget|curl|bash)\b|\bcmd(?:\.exe)?\s*/[ck]\b|\bpowershell(?:\.exe)?\s+-\w'''
+
+[[signature]]
+id = "cmdi-reverse-shell"
+label = "command_injection"
+severity = "critical"
+description = "Reverse-shell building blocks (/dev/tcp, nc -e, bash -i, ${IFS}, mkfifo)"
+pattern = '''/dev/(?:tcp|udp)/|\bnc(?:at)?\b[^|;&]{0,40}\s-\w*e\b|\bbash\s+-i\b|\$\{?ifs\}?|\bmkfifo\b|\bsocat\b[^|]{0,40}exec:'''
+
+# ---------------------------------------------------------------------------------------------
 # Behavioural rules look across requests from one address instead of at a single request.
 # Every key is optional: a missing one keeps the default shown here.
+# ---------------------------------------------------------------------------------------------
 
 [behaviour.brute_force]
 threshold = 10          # failed logins (401 or 403) ...
