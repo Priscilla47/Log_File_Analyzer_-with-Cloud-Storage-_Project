@@ -26,7 +26,6 @@ All modules are in `src/loginsight/`.
 Pure functions that take log entries and return statistics. They do no file or network access, which makes them easy to test with small, known inputs.
 - `summary.py`: `summarize` gives totals, unique IPs, top IPs and paths, status classes and codes, methods, bytes and the error rate.
 - `timeseries.py`: `requests_per_bucket` (requests and errors per minute or hour, gaps included) and `busiest_window`.
-- `analyzer.py`: `analyze_entries`, a pandas variant that returns a table with one row per entry together with basic statistics.
 
 ### Detection (`detection/`)
 Classifies suspicious activity with explainable rules. There are two kinds:
