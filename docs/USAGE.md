@@ -100,7 +100,7 @@ The same log always gives byte-identical files: they hold no creation time and n
 | Code | Meaning |
 | --- | --- |
 | 0 | success, including a log with no requests and a log with attacks in it |
-| 1 | a problem with a file: it is missing, unreadable or a directory, or the output folder cannot be written. One line on standard error, no traceback |
+| 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), or the output folder cannot be written. One line on standard error, no traceback, and no report files |
 | 2 | wrong usage, such as an unknown option or `--top 0` |
 
 Lines that cannot be read are skipped and counted, and the counts are always shown. If more than 10 percent of the lines were skipped, a warning is printed on standard error, so it never ends up inside JSON output.

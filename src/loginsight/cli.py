@@ -14,7 +14,7 @@ from loginsight import __version__
 from loginsight.detection import Severity, detect
 from loginsight.parsing.parser import parse_file
 from loginsight.reporting.report import build_report, render_json, render_markdown
-from loginsight.reporting.text import render_text
+from loginsight.reporting.text import printable, render_text
 from loginsight.reporting.writers import write_report
 
 PROG = "loginsight"
@@ -124,6 +124,13 @@ def _run(args: argparse.Namespace) -> int:
         return _fail(f"cannot read {args.file}: {reason}")
 
     stats = result.stats
+    if stats.total_lines and not stats.parsed:
+        # Nothing was read, so a report would say "no attacks" about a file never understood.
+        reasons = ", ".join(f"{name}: {count}" for name, count in stats.skipped_by_reason.items())
+        return _fail(
+            f"none of the {stats.total_lines} lines in {printable(args.file)} could be read "
+            f"as an access-log entry ({reasons})"
+        )
     if stats.total_lines and stats.skipped / stats.total_lines > SKIP_WARNING_SHARE:
         _warn(
             f"{stats.skipped} of {stats.total_lines} lines "
