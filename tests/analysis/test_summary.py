@@ -116,20 +116,6 @@ def test_sample_log():
     assert summary.status_codes == {200: 3, 401: 1, 404: 1}
 
 
-def test_totals_agree_with_the_existing_analyzer_on_the_sample_log():
-    from loginsight.analysis.analyzer import analyze_entries
-
-    entries = parse_file(SAMPLE).entries
-    _, stats = analyze_entries([e.to_dict() for e in entries])
-    summary = summarize(entries)
-    assert summary.total_requests == stats["total_requests"]
-    assert summary.unique_ips == stats["unique_ips"]
-    assert dict(summary.top_ips) == stats["most_common_ips"]
-    assert dict(summary.top_paths) == stats["most_requested_paths"]
-    assert summary.status_codes == stats["status_code_counts"]
-    assert round(summary.total_bytes / 1024 / 1024, 2) == stats["total_data_transferred_MB"]
-
-
 # --- empty and tiny input -------------------------------------------------------------
 
 

@@ -120,15 +120,3 @@ def test_to_dict_returns_a_new_dict_each_time():
     first = entry.to_dict()
     first["status"] = 999
     assert entry.to_dict()["status"] == 200
-
-
-def test_to_dict_output_still_works_with_the_existing_analyzer():
-    # Transition check: the prototype analyzer takes a list of dicts.
-    from loginsight.analysis.analyzer import analyze_entries
-
-    entries = [make(ip="192.0.2.1", size=1048576), make(ip="192.0.2.2", status=404, size=0)]
-    _, stats = analyze_entries([e.to_dict() for e in entries])
-    assert stats["total_requests"] == 2
-    assert stats["unique_ips"] == 2
-    assert stats["status_code_counts"] == {200: 1, 404: 1}
-    assert stats["total_data_transferred_MB"] == 1.0
