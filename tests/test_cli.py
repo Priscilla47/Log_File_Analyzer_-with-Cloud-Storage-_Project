@@ -355,6 +355,57 @@ class TestBadInput:
         assert status == EXIT_OK and "1 skipped" in out
 
 
+class TestNothingCouldBeRead:
+    """A non-empty file where no line parses is a failure; an empty one is not."""
+
+    @pytest.mark.parametrize("command", ["analyze", "detect"])
+    def test_a_file_of_only_junk_fails(self, capsys, log, command):
+        path = log("not a log line\n" * 4)
+        status, out, err = run(capsys, command, path)
+        assert status == EXIT_PROBLEM and out == ""
+        assert err == (
+            f"loginsight: error: none of the 4 lines in {path} "
+            "could be read as an access-log entry (no_match: 4)\n"
+        )
+
+    def test_the_message_lists_every_reason(self, capsys, log):
+        long_line = "x" * 2_000_000 + "\n"
+        status, _, err = run(capsys, "analyze", log("junk\n" + long_line))
+        assert status == EXIT_PROBLEM
+        assert "(no_match: 1, line_too_long: 1)" in err or "(line_too_long: 1, no_match: 1)" in err
+
+    def test_binary_data_fails(self, capsys, tmp_path):
+        path = tmp_path / "bin.log"
+        path.write_bytes(bytes(range(256)) * 4)
+        status, out, err = run(capsys, "analyze", path)
+        assert status == EXIT_PROBLEM and out == "" and "error: none of the" in err
+
+    @pytest.mark.parametrize("fmt", ["text", "json", "md"])
+    def test_no_report_is_printed_in_any_format(self, capsys, log, fmt):
+        status, out, _ = run(capsys, "analyze", log("junk\n"), "--format", fmt)
+        assert status == EXIT_PROBLEM and out == ""
+
+    def test_no_files_are_written_with_an_output_folder(self, capsys, log, tmp_path):
+        status, out, err = run(capsys, "detect", log("junk\n"), "--output", tmp_path / "out")
+        assert status == EXIT_PROBLEM and out == "" and "error:" in err
+        assert not (tmp_path / "out").exists()
+
+    def test_control_characters_in_the_file_name_are_shown_as_escapes(self, capsys, tmp_path):
+        path = tmp_path / "bad\x1bname.log"
+        path.write_text("junk\n", encoding="utf-8")
+        err = run(capsys, "analyze", path)[2]
+        assert "\\x1b" in err and "\x1b" not in err
+
+    def test_one_good_line_among_junk_still_succeeds(self, capsys, log):
+        status, out, err = run(capsys, "analyze", log("junk\n" * 9 + GOOD))
+        assert status == EXIT_OK and "Lines: 10 read, 1 parsed, 9 skipped" in out
+        assert "warning: 9 of 10 lines (90%)" in err
+
+    def test_an_empty_file_and_blank_lines_are_still_success(self, capsys, log):
+        assert run(capsys, "analyze", log(""))[0] == EXIT_OK
+        assert run(capsys, "analyze", log("\n  \n"))[0] == EXIT_OK
+
+
 class TestSkippedLineWarning:
     def lines(self, good, bad):
         return GOOD * good + "not a log line\n" * bad
@@ -384,8 +435,6 @@ class TestSkippedLineWarning:
         _, out, err = run(capsys, "detect", log(self.lines(1, 1)), "--output", tmp_path)
         assert "loginsight: warning" in err and "loginsight: warning" not in out
 
-    def test_a_file_of_only_junk_warns(self, capsys, log):
-        assert "(100%)" in run(capsys, "analyze", log(self.lines(0, 4)))[2]
 
     def test_parse_statistics_are_always_shown(self, capsys, log):
         out = run(capsys, "detect", log(self.lines(3, 1)))[1]

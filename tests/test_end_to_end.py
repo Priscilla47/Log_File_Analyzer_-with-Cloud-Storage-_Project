@@ -191,3 +191,16 @@ class TestMissingFile:
 
     def test_no_traceback(self, tmp_path):
         assert "Traceback" not in loginsight("analyze", tmp_path / "nope.log").stderr
+
+
+class TestFileInAnotherFormat:
+    def test_exit_code_and_message_for_a_file_nothing_could_be_read_from(self, tmp_path):
+        other = tmp_path / "other.log"
+        other.write_bytes(bytes(range(256)) * 8)
+        done = loginsight("analyze", other, "--output", tmp_path / "out")
+        assert done.returncode == 1
+        assert done.stdout == ""
+        lines = other.read_bytes().count(b"\n") + 1  # the last line has no newline
+        assert done.stderr.startswith(f"loginsight: error: none of the {lines} lines in {other} ")
+        assert "Traceback" not in done.stderr
+        assert not (tmp_path / "out").exists()
