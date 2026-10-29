@@ -131,11 +131,15 @@ def _escape(text: str) -> str:
     return "".join(f"\\{char}" if char in _MARKDOWN_SPECIAL else char for char in cleaned)
 
 
+def periods(count: int) -> str:
+    return f"{count} period" + ("" if count == 1 else "s")
+
+
 def _time(moment: datetime | None) -> str:
     return moment.isoformat() if moment else "-"
 
 
-def _human_bytes(count: int) -> str:
+def human_bytes(count: int) -> str:
     size = float(count)
     for unit in ("B", "KiB", "MiB", "GiB"):
         if size < 1024:
@@ -167,7 +171,7 @@ def render_markdown(report: Report, *, charts: bool = False) -> str:
         f"- Lines read: {stats.total_lines} ({stats.parsed} parsed, {stats.skipped} skipped)",
         f"- Requests: {summary.total_requests}",
         f"- Unique IP addresses: {summary.unique_ips}",
-        f"- Data sent: {_human_bytes(summary.total_bytes)}",
+        f"- Data sent: {human_bytes(summary.total_bytes)}",
         f"- Error rate (4xx and 5xx): {summary.error_rate:.1%}",
         f"- First request: {_time(summary.first_time)}",
         f"- Last request: {_time(summary.last_time)}",
@@ -199,7 +203,7 @@ def render_markdown(report: Report, *, charts: bool = False) -> str:
     if report.buckets:
         busiest = max(report.buckets, key=lambda bucket: bucket.requests)  # first of equals
         lines += [
-            f"Requests per {report.bucket}, over {len(report.buckets)} periods. "
+            f"Requests per {report.bucket}, over {periods(len(report.buckets))}. "
             f"The busiest started at {busiest.start.isoformat()} with {busiest.requests} requests.",
             "",
         ]

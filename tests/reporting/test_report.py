@@ -296,7 +296,7 @@ class TestRenderMarkdown:
         sizes = {0: "0 B", 1023: "1023 B", 1024: "1.0 KiB", 1536: "1.5 KiB",
                  1024**2: "1.0 MiB", 5 * 1024**3: "5.0 GiB", 2 * 1024**4: "2.0 TiB"}  # fmt: skip
         for count, text in sizes.items():
-            assert report_module._human_bytes(count) == text
+            assert report_module.human_bytes(count) == text
 
     def test_data_sent_uses_human_sizes(self):
         text = render_markdown(report_for([make_entry(size=2048)]))
@@ -432,3 +432,14 @@ class TestDemoLog:
         _, _, report = demo
         other = replace(report, detections=report.detections[1:])
         assert render_json(other) != render_json(report)
+
+
+class TestPeriods:
+    def test_one_period_is_singular(self):
+        assert report_module.periods(1) == "1 period"
+        assert report_module.periods(2) == "2 periods"
+        assert report_module.periods(0) == "0 periods"
+
+    def test_the_traffic_line_uses_it(self):
+        text = render_markdown(report_for([make_entry()]))
+        assert "Requests per hour, over 1 period. " in text
