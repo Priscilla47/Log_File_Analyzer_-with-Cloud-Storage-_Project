@@ -1,0 +1,5 @@
+203.0.113.5 - - [10/Oct/2026:10:00:01 +0000] "GET /index.html HTTP/1.1" 200 1500 "-" "Mozilla/5.0"
+203.0.113.5 - - [10/Oct/2026:10:20:00 +0000] "GET /about HTTP/1.1" 200 800 "-" "Mozilla/5.0"
+198.51.100.7 - - [10/Oct/2026:11:05:30 +0000] "GET /search?q=1'+UNION+SELECT+password+FROM+users-- HTTP/1.1" 500 120 "-" "curl/8.0"
+198.51.100.7 - - [10/Oct/2026:11:05:40 +0000] "GET /missing HTTP/1.1" 404 0 "-" "curl/8.0"
+this line is not a log line

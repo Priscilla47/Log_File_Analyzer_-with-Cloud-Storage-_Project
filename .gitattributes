@@ -1,2 +1,3 @@
 # Sample logs are compared byte for byte by the tests, so never convert their line endings.
 data/samples/* text eol=lf
+tests/reporting/golden/* text eol=lf
