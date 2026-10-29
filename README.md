@@ -1,14 +1,12 @@
 # LogInsight
 
-[![CI](https://github.com/Priscilla47/Log_File_Analyzer_-with-Cloud-Storage-_Project/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Priscilla47/Log_File_Analyzer_-with-Cloud-Storage-_Project/actions/workflows/ci.yml)
-
-A web server access-log analyzer. Point it at an Apache or Nginx log and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
+A web server access-log analyzer. Point it at an Apache or Nginx access log in the Common or Combined format and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
 
 > **Status:** early development. Parsing, analysis, attack detection, reports and the command line work. The web dashboard and cloud storage are still to come.
 
 ## What it does
 
-- **Parse** Common and Combined log formats without choking on malformed lines.
+- **Parse** the Common and Combined log formats, which are the default access-log formats of Apache and Nginx, without choking on malformed lines. Dedicated Nginx support and format auto-detection are planned.
 - **Analyse** traffic: totals, top IPs and paths, status codes, data volume, traffic over time.
 - **Detect attacks** with readable rules: SQL injection, XSS, path traversal, command injection, probes for sensitive files, brute-force logins and scanning. Each detection comes with a severity and the evidence that triggered it.
 - **Two interfaces** over one core library: a command-line tool (ready) and a web dashboard (planned).
