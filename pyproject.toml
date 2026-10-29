@@ -17,6 +17,9 @@ dependencies = [
     "tomli>=2.0; python_version < '3.11'",
 ]
 
+[project.scripts]
+loginsight = "loginsight.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
