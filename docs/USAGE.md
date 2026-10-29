@@ -1,6 +1,6 @@
 # Using LogInsight
 
-LogInsight reads an Apache or Nginx access log (Common or Combined format) and tells you how much traffic you had and which requests look like attacks. This page shows how to install it and run it. For how it works inside, see [ARCHITECTURE.md](ARCHITECTURE.md).
+LogInsight reads a web server access log in the Common or Combined format (the default for Apache and Nginx; dedicated Nginx support is planned) and tells you how much traffic you had and which requests look like attacks. This page shows how to install it and run it. For how it works inside, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Install
 
