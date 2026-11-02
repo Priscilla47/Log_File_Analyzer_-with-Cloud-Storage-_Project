@@ -34,6 +34,7 @@ def _lines_section(report: Report) -> list[str]:
     stats = report.stats
     lines = [
         f"File: {printable(report.source_name)}",
+        f"Format: {report.log_format}",
         f"Lines: {stats.total_lines} read, {stats.parsed} parsed, {stats.skipped} skipped "
         f"({stats.success_rate:.1%} parsed)",
     ]

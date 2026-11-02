@@ -13,6 +13,7 @@ from loginsight.analysis.summary import Summary, summarize
 from loginsight.analysis.timeseries import BUCKET_SIZES, TimeBucket, requests_per_bucket
 from loginsight.detection.models import Detection
 from loginsight.parsing.models import ParseResult, ParseStats
+from loginsight.parsing.parser import LOG_FORMATS
 
 TOOL_NAME = "loginsight"
 
@@ -52,6 +53,8 @@ class Report:
     # False when the log covers too long a time to list every quiet period: ``buckets`` then
     # holds only the periods that had requests.
     gaps_filled: bool = True
+    # The log format the file was read as: one of ``LOG_FORMATS``.
+    log_format: str = "apache"
 
 
 def _file_name(name: str) -> str:
@@ -66,6 +69,7 @@ def build_report(
     source_name: str,
     top_n: int = 10,
     bucket: str = "hour",
+    log_format: str = "apache",
 ) -> Report:
     """Gather the statistics, the traffic over time and the detections into a :class:`Report`.
 
@@ -75,6 +79,8 @@ def build_report(
     """
     if bucket not in BUCKET_SIZES:
         raise ValueError(f"bucket must be one of: {', '.join(BUCKET_SIZES)}; got {bucket!r}")
+    if log_format not in LOG_FORMATS:
+        raise ValueError(f"log_format must be one of: {', '.join(LOG_FORMATS)}; got {log_format!r}")
     entries = parse_result.entries
     try:
         buckets, gaps_filled = requests_per_bucket(entries, bucket), True
@@ -88,6 +94,7 @@ def build_report(
         buckets=buckets,
         detections=sorted(detections, key=lambda detection: detection.sort_key),
         gaps_filled=gaps_filled,
+        log_format=log_format,
     )
 
 
@@ -109,7 +116,11 @@ def to_dict(report: Report) -> dict:
     """The report as plain data, in the order the JSON file uses."""
     return {
         "tool": {"name": TOOL_NAME, "version": __version__},
-        "source": {"name": report.source_name, "parse": _stats_dict(report.stats)},
+        "source": {
+            "name": report.source_name,
+            "format": report.log_format,
+            "parse": _stats_dict(report.stats),
+        },
         "summary": report.summary.to_dict(),
         "traffic": {
             "bucket": report.bucket,
@@ -180,6 +191,7 @@ def render_markdown(report: Report, *, charts: bool = False) -> str:
 
     lines += ["## Summary", ""]
     lines += [
+        f"- Log format: {report.log_format}",
         f"- Lines read: {stats.total_lines} ({stats.parsed} parsed, {stats.skipped} skipped)",
         f"- Requests: {summary.total_requests}",
         f"- Unique IP addresses: {summary.unique_ips}",
