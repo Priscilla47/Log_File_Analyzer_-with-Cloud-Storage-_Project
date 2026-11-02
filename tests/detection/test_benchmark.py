@@ -427,7 +427,7 @@ def test_the_other_rules_are_not_exercised_by_the_benchmark_and_rely_on_their_ow
     score, which is the benchmark's honest limit: their protection is rule_cases.toml. If the
     generator ever exercises one, this test fails and the rule moves to EXERCISED."""
     others = [r.id for r in RULES.signatures if r.id not in EXERCISED]
-    assert len(others) == 9
+    assert len(others) == 13
     for rule_id in others:
         label = next(r.label for r in RULES.signatures if r.id == rule_id)
         scores = pooled(benchmark_logs, without(RULES, rule_id))

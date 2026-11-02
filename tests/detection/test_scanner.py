@@ -339,8 +339,12 @@ def test_one_request_is_worded_in_the_singular():
 
 
 @pytest.mark.parametrize(
-    "tool_name", ["sqlmap", "nikto", "nmap", "masscan", "dirbuster", "gobuster", "wfuzz", "nuclei"]
-)
+    "tool_name",
+    [
+        "sqlmap", "nikto", "nmap", "masscan", "dirbuster", "gobuster", "wfuzz", "nuclei",
+        "zgrab", "wpscan", "acunetix", "nessus", "openvas", "w3af",
+    ],
+)  # fmt: skip
 def test_every_default_tool_is_recognised(tool_name):
     found = tool(detect_scanners([request(status=200, agent=f"{tool_name}/1.0")]))
     assert [d.evidence.split("'")[1] for d in found] == [tool_name]

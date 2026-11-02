@@ -39,7 +39,7 @@ Classifies suspicious activity with explainable rules. There are two kinds:
 Every detection says which rule matched and quotes its evidence, so a result can always be explained and checked.
 
 #### The rules file
-Rules are data in `detection/rules/default.toml`, not code. There are 23 signature rules (6 SQL injection, 5 XSS, 3 path traversal, 3 command injection, 6 sensitive-file probes) and the settings of the two behavioural rules. A signature rule looks like this:
+Rules are data in `detection/rules/default.toml`, not code. There are 27 signature rules (6 SQL injection, 5 XSS, 4 path traversal, 4 command injection, 8 sensitive-file probes) and the settings of the two behavioural rules. A signature rule looks like this:
 
 ```toml
 [[signature]]
@@ -60,7 +60,7 @@ A request can match several rules (`UNION SELECT` inside a `<script>` tag, for e
 #### Measuring quality
 `tests/detection/benchmark.py` scores the detections against the labels the sample generator writes, as **recall** (how many labelled attacks were found) and **precision** (how many detections were real) for each of the seven attack classes. Signature classes are scored per line, behavioural ones per burst. The tests require at least 0.95 for both on several generated logs and on the demo log, and require that clean logs raise nothing. The measured score is currently 1.000 for every class.
 
-That number comes from synthetic logs made by a simple generator. It shows that the rules do what they were written to do and that nothing has regressed. It is **not** a promise about real traffic. The benchmark also cannot see rules the generator never exercises (9 of the 23); those are covered by the per-rule cases.
+That number comes from synthetic logs made by a simple generator. It shows that the rules do what they were written to do and that nothing has regressed. It is **not** a promise about real traffic. The benchmark also cannot see rules the generator never exercises (13 of the 27); those are covered by the per-rule cases.
 
 ### Reporting (`reporting/`)
 - `report.py`: `build_report` gathers statistics, traffic over time and detections into a `Report`; `render_json` and `render_markdown` turn it into text. It is pure: no file access, no clock, no absolute paths, so the same log always gives byte-identical output. Text taken from the log is escaped in Markdown so it cannot break a table or add formatting.

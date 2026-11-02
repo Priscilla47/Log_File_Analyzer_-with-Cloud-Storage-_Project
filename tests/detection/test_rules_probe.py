@@ -32,6 +32,8 @@ SEVERITIES = {
     "probe-backup-archive": Severity.MEDIUM,
     "probe-diagnostics": Severity.MEDIUM,
     "probe-admin-panel": Severity.LOW,
+    "probe-phpunit-eval": Severity.HIGH,
+    "probe-router-exploit": Severity.MEDIUM,
 }
 
 
@@ -126,7 +128,7 @@ def entry_for(target):
 # --- the rule set ---------------------------------------------------------------------
 
 
-def test_there_are_six_probe_rules_with_the_agreed_severities():
+def test_there_are_eight_probe_rules_with_the_agreed_severities():
     assert {rule_id: rule.severity for rule_id, rule in PROBES.items()} == SEVERITIES
 
 

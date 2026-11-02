@@ -65,6 +65,12 @@ class ScannerSettings:
         "gobuster",
         "wfuzz",
         "nuclei",
+        "zgrab",
+        "wpscan",
+        "acunetix",
+        "nessus",
+        "openvas",
+        "w3af",
     )
 
 
