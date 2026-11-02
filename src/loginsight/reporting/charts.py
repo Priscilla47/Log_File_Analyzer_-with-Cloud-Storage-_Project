@@ -15,8 +15,10 @@ import io
 import os
 import uuid
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 
+from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
 from matplotlib.figure import Figure
@@ -83,10 +85,39 @@ def _save(figure: Figure, output) -> Path:
     return path
 
 
+@lru_cache(maxsize=1)
+def _font():
+    """The font the charts are drawn with: matplotlib's first choice of sans-serif font."""
+    return font_manager.get_font(font_manager.findfont(font_manager.FontProperties()))
+
+
+@lru_cache(maxsize=4096)
+def _has_glyph(char: str) -> bool:
+    return _font().get_char_index(ord(char)) != 0
+
+
+def _escape_char(char: str) -> str:
+    code = ord(char)
+    if code < 0x100:
+        return f"\\x{code:02x}"
+    return f"\\u{code:04x}" if code < 0x10000 else f"\\U{code:08x}"
+
+
+def _escape_missing(text: str) -> str:
+    """``text`` with each character that is not printable, or that the font cannot draw, written
+    as ``\\xNN``, ``\\uNNNN`` or ``\\UNNNNNNNN``. So matplotlib neither warns nor draws an
+    empty box, and an invisible character (a right-to-left override, say) cannot reorder a
+    label."""
+    return "".join(
+        char if char.isprintable() and _has_glyph(char) else _escape_char(char) for char in text
+    )
+
+
 def _label(path: str) -> str:
     """A y-axis label for a request path: shortened, and safe to draw as plain text."""
     if not path:
         return "(no path)"  # a malformed request has no path
+    path = _escape_missing(path)
     if len(path) > MAX_LABEL_LENGTH:
         path = path[: MAX_LABEL_LENGTH - 1] + "…"
     return path.replace("$", r"\$")  # matplotlib would read $...$ as math
