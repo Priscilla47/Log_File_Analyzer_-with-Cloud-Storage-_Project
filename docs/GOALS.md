@@ -18,7 +18,7 @@ This page says what the project is for, and just as important, what it is not. F
 
 - **Not a real-time tool.** It analyses files you give it. It does not tail or stream live logs.
 - **Not a SIEM, an IDS or a WAF.** It reports on past traffic. It does not collect logs from many machines, correlate across systems, or block anything.
-- **Not a general log analyser.** It handles web server access logs only, not application, system or error logs.
+- **Not a general log analyzer.** It handles web server access logs only, not application, system or error logs.
 
 ## Principles
 

@@ -36,9 +36,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not slow' --import-mode=importlib"
+addopts = "-m 'not slow and not e2e' --import-mode=importlib"
 markers = [
     "slow: long-running checks, run with `pytest -m slow`",
+    "e2e: run the real command in a new process (about a minute), run with `pytest -m e2e`",
 ]
 
 [tool.ruff]
