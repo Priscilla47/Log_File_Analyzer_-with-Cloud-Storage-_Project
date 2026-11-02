@@ -138,7 +138,17 @@ All addresses come from ranges reserved for documentation, so the logs hold no r
 
 ## Changing the rules
 
-Rules are data. To change them, copy `src/loginsight/detection/rules/default.toml`, edit the copy and load it from Python:
+Rules are data. To change them, copy `src/loginsight/detection/rules/default.toml`, edit the copy and give it to the command line:
+
+```
+$ loginsight detect data/samples/demo.log --rules src/loginsight/detection/rules/default.toml
+```
+
+That example names the built-in file itself, so it gives the same result as no option; use the path of your edited copy instead.
+
+`--rules` works with both `analyze` and `detect`. The file replaces the built-in rules: it does not add to them, so keep the rules you still want. A file that cannot be read, or that has a mistake in it, gives one error on standard error naming the problem, exit code 1, and nothing is printed or written.
+
+From Python the same file is loaded with `load_rules`:
 
 ```python
 from loginsight.detection import detect, load_rules
@@ -148,4 +158,4 @@ rules = load_rules("my_rules.toml")
 detections = detect(parse_file("data/samples/demo.log").entries, rules)
 ```
 
-The file explains every field at the top. A mistake in a rule file is reported with the rule's name, for example an unknown label or a pattern that is not a valid regular expression. The command line does not take a rules file yet.
+The file explains every field at the top. A mistake in a rule file is reported with the rule's name, for example an unknown label or a pattern that is not a valid regular expression.

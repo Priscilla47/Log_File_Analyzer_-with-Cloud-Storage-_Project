@@ -13,7 +13,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from loginsight import __version__
-from loginsight.detection import Severity, detect
+from loginsight.detection import Severity, detect, load_rules
+from loginsight.detection.ruleset import RulesError, RuleSet, parse_rules
 from loginsight.parsing.detect import detect_log_format
 from loginsight.parsing.parser import parse_text
 from loginsight.reporting.report import build_report, render_json, render_markdown
@@ -55,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
             choices=("text", "json", "md"),
             default="text",
             help="what to print: text (default), the JSON report or the Markdown report",
+        )
+        command.add_argument(
+            "--rules",
+            metavar="FILE",
+            help="use the detection rules in this TOML file instead of the built-in ones",
         )
         command.add_argument(
             "--output",
@@ -118,8 +124,8 @@ def _silence_stdout() -> None:
         pass
 
 
-def _read_log(name: str) -> str:
-    """The text of the log file ``name``, read through the storage layer.
+def _read_file(name: str) -> str:
+    """The text of the file ``name``, read through the storage layer.
 
     The file is resolved first, so a link such as ``/var/log/access.log`` that points elsewhere
     works, and the storage is confined to the folder that really holds the file.
@@ -130,9 +136,28 @@ def _read_log(name: str) -> str:
     return LocalStorage(path.parent).read_text(path.name)
 
 
+def _load_rules(name: str | None) -> RuleSet:
+    """The rules in the file ``name``, or the built-in rules for ``None``.
+
+    Raises :class:`OSError` if the file cannot be read and :class:`RulesError` if it is wrong.
+    """
+    if name is None:
+        return load_rules()
+    return parse_rules(_read_file(name), source=name)
+
+
 def _run(args: argparse.Namespace) -> int:
     try:
-        text = _read_log(args.file)
+        rules = _load_rules(args.rules)
+    except RulesError as error:
+        return _fail(
+            "\n".join(printable(line) if line else line for line in str(error).split("\n"))
+        )
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        return _fail(f"cannot read {printable(args.rules)}: {reason}")
+    try:
+        text = _read_file(args.file)
     except OSError as error:
         reason = error.strerror or type(error).__name__
         return _fail(f"cannot read {args.file}: {reason}")
@@ -152,7 +177,7 @@ def _run(args: argparse.Namespace) -> int:
             f"({stats.skipped / stats.total_lines:.0%}) could not be read"
         )
 
-    detections = detect(result.entries)
+    detections = detect(result.entries, rules)
     if args.command == "detect":
         minimum = Severity.from_name(args.min_severity)
         detections = [d for d in detections if d.severity >= minimum]

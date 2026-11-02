@@ -58,7 +58,15 @@ class TestUsageCommands:
 
     def test_every_option_of_the_commands_is_documented(self):
         text = USAGE.read_text(encoding="utf-8")
-        for option in ("--format", "--output", "--top", "--bucket", "--min-severity", "--version"):
+        for option in (
+            "--format",
+            "--output",
+            "--top",
+            "--bucket",
+            "--min-severity",
+            "--rules",
+            "--version",
+        ):
             assert option in text, option
 
 
