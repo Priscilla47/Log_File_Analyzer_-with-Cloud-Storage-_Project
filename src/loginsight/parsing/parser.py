@@ -31,6 +31,10 @@ _NGINX_ESCAPES = re.compile(r"(?:\\x[0-9A-F]{2})+")
 # Longer lines are rejected before matching, which bounds the work done per line.
 MAX_LINE_LENGTH = 8192
 
+# A size with more digits than this cannot be a byte count (19 digits still fit a signed 64-bit
+# integer), and Python refuses to convert a string of more than 4300 digits at all.
+MAX_SIZE_DIGITS = 19
+
 # Parse statistics keep only the first few problems, each with a shortened copy of the line.
 MAX_FIRST_ERRORS = 10
 MAX_ERROR_LINE_LENGTH = 200
@@ -77,7 +81,7 @@ def _parse_time(text: str, line: str) -> datetime:
 def _parse_size(text: str, line: str) -> int:
     if text == "-":
         return 0
-    if text.isascii() and text.isdigit():
+    if text.isascii() and text.isdigit() and len(text) <= MAX_SIZE_DIGITS:
         return int(text)
     raise LogParseError("bad_size", line)
 
