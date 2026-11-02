@@ -9,7 +9,9 @@ fields, a virtual-host prefix, or a client name containing a space is not recogn
 reported as ``no_match``.
 """
 
+import io
 import re
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,31 +127,23 @@ def parse_line(line: str) -> LogEntry:
     )
 
 
-def parse_file(filepath: str | Path) -> ParseResult:
-    """Parse a log file and report what was read and what was skipped.
-
-    Blank lines are ignored but still count towards line numbers. A line that raises
-    :class:`LogParseError` is skipped and counted in the statistics. The file is read as
-    UTF-8: a leading byte order mark is dropped and invalid bytes are replaced, so neither
-    stops the parse. A missing file or a directory raises the usual :class:`OSError` subclass.
-    """
+def _parse_lines(lines: Iterable[str]) -> ParseResult:
     entries: list[LogEntry] = []
     skipped_by_reason: dict[str, int] = {}
     first_errors: list[ParseIssue] = []
     total_lines = 0
 
-    with open(filepath, encoding="utf-8-sig", errors="replace") as file:
-        for line_number, raw in enumerate(file, start=1):
-            if not raw.strip():
-                continue
-            total_lines += 1
-            try:
-                entries.append(parse_line(raw))
-            except LogParseError as error:
-                skipped_by_reason[error.reason] = skipped_by_reason.get(error.reason, 0) + 1
-                if len(first_errors) < MAX_FIRST_ERRORS:
-                    text = raw.rstrip("\r\n")[:MAX_ERROR_LINE_LENGTH]
-                    first_errors.append(ParseIssue(line_number, error.reason, text))
+    for line_number, raw in enumerate(lines, start=1):
+        if not raw.strip():
+            continue
+        total_lines += 1
+        try:
+            entries.append(parse_line(raw))
+        except LogParseError as error:
+            skipped_by_reason[error.reason] = skipped_by_reason.get(error.reason, 0) + 1
+            if len(first_errors) < MAX_FIRST_ERRORS:
+                text = raw.rstrip("\r\n")[:MAX_ERROR_LINE_LENGTH]
+                first_errors.append(ParseIssue(line_number, error.reason, text))
 
     skipped = sum(skipped_by_reason.values())
     stats = ParseStats(
@@ -160,3 +154,24 @@ def parse_file(filepath: str | Path) -> ParseResult:
         first_errors=first_errors,
     )
     return ParseResult(entries=entries, stats=stats)
+
+
+def parse_text(text: str) -> ParseResult:
+    """Parse the text of a log and report what was read and what was skipped.
+
+    Lines end at ``\\n``, ``\\r\\n`` or ``\\r``, exactly as when a file is read. Blank lines are
+    ignored but still count towards line numbers; a line that raises :class:`LogParseError` is
+    skipped and counted in the statistics.
+    """
+    return _parse_lines(io.StringIO(text, newline=None))
+
+
+def parse_file(filepath: str | Path) -> ParseResult:
+    """Parse a log file and report what was read and what was skipped.
+
+    The rules are those of :func:`parse_text`. The file is read as UTF-8: a leading byte order
+    mark is dropped and invalid bytes are replaced, so neither stops the parse. A missing file
+    or a directory raises the usual :class:`OSError` subclass.
+    """
+    with open(filepath, encoding="utf-8-sig", errors="replace") as file:
+        return _parse_lines(file)

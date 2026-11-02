@@ -120,7 +120,7 @@ class TestArchitecture:
             assert f"`{package}/`" in self.text, package
 
     def test_planned_parts_are_marked_planned(self):
-        assert re.search(r"Storage \(`storage/`\), planned", self.text)
+        assert re.search(r"Storage \(`storage/`\)\n", self.text)  # built: not marked planned
         assert re.search(r"Dashboard \(`dashboard/`\), planned", self.text)
 
     def test_the_rule_counts_are_right(self):

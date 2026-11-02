@@ -181,7 +181,7 @@ class TestFailures:
         def broken(*args, **kwargs):
             raise OSError("disk full")
 
-        monkeypatch.setattr(writers.os, "replace", broken)
+        monkeypatch.setattr(os, "replace", broken)
         with pytest.raises(OSError, match="disk full"):
             write_report(report, tmp_path, ["json"])
         assert names(tmp_path) == []

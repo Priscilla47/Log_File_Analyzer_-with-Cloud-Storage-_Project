@@ -501,7 +501,7 @@ class TestUnexpectedOutputProblems:
         def interrupted(path):
             raise KeyboardInterrupt
 
-        monkeypatch.setattr(cli, "parse_file", interrupted)
+        monkeypatch.setattr(cli, "parse_text", interrupted)
         status, out, err = run(capsys, "analyze", DEMO)
         assert status == cli.EXIT_INTERRUPTED == 130
         assert out == "" and "interrupted" in err and "Traceback" not in err
@@ -588,4 +588,8 @@ class TestPackaging:
         # the command line only wires the library together
         source = (ROOT / "src" / "loginsight" / "cli.py").read_text(encoding="utf-8")
         assert not re.search(r"^import (re|json)$", source, re.MULTILINE)
-        assert "Temporary exception" in source  # the direct file access is documented
+        # all file access goes through the storage layer
+        assert not re.search(r"(?<![.\w])open\(", source)  # os.open(devnull) is not a file read
+        assert "parse_file" not in source
+        assert "Temporary exception" not in source
+        assert "LocalStorage" in source

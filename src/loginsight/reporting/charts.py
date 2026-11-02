@@ -62,15 +62,20 @@ def _write_bytes(path: Path, data: bytes) -> None:
         file.write(data)
 
 
+def _png(figure: Figure) -> bytes:
+    buffer = io.BytesIO()
+    figure.savefig(buffer, format="png")
+    return buffer.getvalue()
+
+
 def _save(figure: Figure, output) -> Path:
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
-    buffer = io.BytesIO()
-    figure.savefig(buffer, format="png")
+    data = _png(figure)
     # A unique hidden name in the same folder, so the final rename stays on one file system.
     temporary = path.parent / f".{uuid.uuid4().hex}.tmp"
     try:
-        _write_bytes(temporary, buffer.getvalue())
+        _write_bytes(temporary, data)
         os.replace(temporary, path)
     except BaseException:
         temporary.unlink(missing_ok=True)
@@ -87,12 +92,8 @@ def _label(path: str) -> str:
     return path.replace("$", r"\$")  # matplotlib would read $...$ as math
 
 
-def plot_status_codes(status_classes: Mapping[str, int], output) -> Path:
-    """Bar chart of requests per status class (``"2xx"``, ``"4xx"`` and so on).
-
-    The four main classes are always drawn. ``"1xx"`` and ``"other"`` appear only when they
-    have requests. An unknown class or a negative count raises :class:`ValueError`.
-    """
+def _status_figure(status_classes: Mapping[str, int]) -> Figure:
+    """The figure for :func:`plot_status_codes`."""
     for name, count in status_classes.items():
         if name not in _CLASS_ORDER:
             raise ValueError(f"unknown status class {name!r}")
@@ -100,7 +101,7 @@ def plot_status_codes(status_classes: Mapping[str, int], output) -> Path:
             raise ValueError(f"negative count for {name}: {count}")
 
     if not any(status_classes.values()):
-        return _save(_no_data("Responses by status class"), output)
+        return _no_data("Responses by status class")
 
     names = [
         name for name in _CLASS_ORDER if name in _MAIN_CLASSES or status_classes.get(name, 0) > 0
@@ -113,13 +114,27 @@ def plot_status_codes(status_classes: Mapping[str, int], output) -> Path:
     ax.set_xlabel("Status class")
     ax.set_ylabel("Requests")
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    return _save(figure, output)
+    return figure
 
 
-def plot_traffic(buckets: Sequence[TimeBucket], output) -> Path:
-    """Line chart of requests per bucket, with the errors as a second line."""
+def plot_status_codes(status_classes: Mapping[str, int], output) -> Path:
+    """Bar chart of requests per status class (``"2xx"``, ``"4xx"`` and so on).
+
+    The four main classes are always drawn. ``"1xx"`` and ``"other"`` appear only when they
+    have requests. An unknown class or a negative count raises :class:`ValueError`.
+    """
+    return _save(_status_figure(status_classes), output)
+
+
+def status_codes_png(status_classes: Mapping[str, int]) -> bytes:
+    """The :func:`plot_status_codes` chart as the bytes of a PNG image."""
+    return _png(_status_figure(status_classes))
+
+
+def _traffic_figure(buckets: Sequence[TimeBucket]) -> Figure:
+    """The figure for :func:`plot_traffic`."""
     if not buckets:
-        return _save(_no_data("Traffic over time"), output)
+        return _no_data("Traffic over time")
 
     starts = [bucket.start for bucket in buckets]
     figure, ax = _new_figure("Traffic over time")
@@ -141,13 +156,23 @@ def plot_traffic(buckets: Sequence[TimeBucket], output) -> Path:
     ax.set_ylabel("Requests")
     ax.set_ylim(bottom=0)
     ax.legend()
-    return _save(figure, output)
+    return figure
 
 
-def plot_top_paths(top_paths: Sequence[tuple[str, int]], output) -> Path:
-    """Horizontal bar chart of the most requested paths, busiest first (at the top)."""
+def plot_traffic(buckets: Sequence[TimeBucket], output) -> Path:
+    """Line chart of requests per bucket, with the errors as a second line."""
+    return _save(_traffic_figure(buckets), output)
+
+
+def traffic_png(buckets: Sequence[TimeBucket]) -> bytes:
+    """The :func:`plot_traffic` chart as the bytes of a PNG image."""
+    return _png(_traffic_figure(buckets))
+
+
+def _top_paths_figure(top_paths: Sequence[tuple[str, int]]) -> Figure:
+    """The figure for :func:`plot_top_paths`."""
     if not top_paths:
-        return _save(_no_data("Most requested paths"), output)
+        return _no_data("Most requested paths")
 
     figure, ax = _new_figure("Most requested paths")
     bars = ax.barh([_label(path) for path, _ in top_paths], [count for _, count in top_paths])
@@ -155,4 +180,14 @@ def plot_top_paths(top_paths: Sequence[tuple[str, int]], output) -> Path:
     ax.invert_yaxis()
     ax.set_xlabel("Requests")
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    return _save(figure, output)
+    return figure
+
+
+def plot_top_paths(top_paths: Sequence[tuple[str, int]], output) -> Path:
+    """Horizontal bar chart of the most requested paths, busiest first (at the top)."""
+    return _save(_top_paths_figure(top_paths), output)
+
+
+def top_paths_png(top_paths: Sequence[tuple[str, int]]) -> bytes:
+    """The :func:`plot_top_paths` chart as the bytes of a PNG image."""
+    return _png(_top_paths_figure(top_paths))
