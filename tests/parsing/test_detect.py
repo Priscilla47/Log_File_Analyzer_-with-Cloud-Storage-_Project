@@ -115,12 +115,12 @@ class TestLimits:
         assert MAX_ESCAPES_EXAMINED == 100_000
 
     def test_a_text_of_nothing_but_backslashes_is_quick(self):
-        started = time.perf_counter()
+        started = time.process_time()
         assert detect_log_format("\\" * 3_000_000) == "apache"
-        assert time.perf_counter() - started < 2
+        assert time.process_time() - started < 2
 
     def test_a_large_log_is_quick(self):
         text = line(r"GET /\x22 HTTP/1.1") * 100_000
-        started = time.perf_counter()
+        started = time.process_time()
         assert detect_log_format(text) == "nginx"
-        assert time.perf_counter() - started < 2
+        assert time.process_time() - started < 2

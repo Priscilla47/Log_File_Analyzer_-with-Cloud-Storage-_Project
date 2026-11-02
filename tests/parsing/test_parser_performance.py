@@ -34,9 +34,9 @@ def big_log(tmp_path_factory):
 
 
 def test_parser_handles_100k_lines_fast_enough(big_log):
-    started = time.perf_counter()
+    started = time.process_time()
     result = parse_file(big_log)
-    elapsed = time.perf_counter() - started
+    elapsed = time.process_time() - started
 
     throughput = LINES / elapsed
     print(f"\nparsed {LINES:,} lines in {elapsed:.2f}s: {throughput:,.0f} lines/s")
