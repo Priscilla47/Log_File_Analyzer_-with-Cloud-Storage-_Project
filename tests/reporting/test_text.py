@@ -147,8 +147,8 @@ class TestAnalyzeView:
 class TestDetectView:
     def test_table(self, tiny):
         lines = render_text(tiny, "detect").splitlines()
-        assert lines[4] == "Detections: 1"
-        header, row = lines[5], lines[6]
+        assert lines[5] == "Detections: 1"
+        header, row = lines[6], lines[7]
         assert header.split()[:6] == ["SEVERITY", "RULE", "IP", "TIME", "COUNT", "EVIDENCE"]
         assert row.split()[:5] == [
             "high", "sqli-union-select", "198.51.100.7", "2026-10-10T11:05:30+00:00", "1",
@@ -169,7 +169,7 @@ class TestDetectView:
             entry(path="/a", query="c=;id", request="GET /a?c=;id HTTP/1.1"),
         ]
         text = render_text(report_of(entries), "detect")
-        severities = [line.split()[0] for line in text.splitlines()[5:]]
+        severities = [line.split()[0] for line in text.splitlines()[6:]]
         order = [Severity.from_name(name) for name in severities]
         assert order == sorted(order, reverse=True) and len(order) >= 1
 
