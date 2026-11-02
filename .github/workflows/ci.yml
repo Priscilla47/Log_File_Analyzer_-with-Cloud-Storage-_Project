@@ -50,8 +50,8 @@ jobs:
       - name: Test
         run: pytest --cov=loginsight --cov-report=term-missing
 
-  # The 100,000-line speed check is a separate job so a slow runner never hides the result
-  # of the fast tests.
+  # The 100,000-line speed check and the end-to-end runs (a new process per scenario) are a
+  # separate job so a slow runner never hides the result of the fast tests.
   slow:
     name: slow
     runs-on: ubuntu-latest
@@ -65,5 +65,5 @@ jobs:
           cache-dependency-path: pyproject.toml
       - name: Install
         run: pip install -e ".[dev]"
-      - name: Speed check
-        run: pytest -m slow -s
+      - name: Speed and end-to-end checks
+        run: pytest -m "slow or e2e" -s

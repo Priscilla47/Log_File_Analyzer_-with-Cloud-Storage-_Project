@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.e2e
+
 ROOT = Path(__file__).parents[1]
 SAMPLES = ROOT / "data" / "samples"
 DEMO = SAMPLES / "demo.log"
