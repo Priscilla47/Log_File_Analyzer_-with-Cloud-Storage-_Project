@@ -64,12 +64,16 @@ def _floor(moment: datetime, bucket: str) -> datetime:
     return moment.replace(second=0, microsecond=0)
 
 
-def requests_per_bucket(entries: Iterable[LogEntry], bucket: str = "hour") -> list[TimeBucket]:
+def requests_per_bucket(
+    entries: Iterable[LogEntry], bucket: str = "hour", *, fill_gaps: bool = True
+) -> list[TimeBucket]:
     """Count requests and errors per ``"minute"`` or ``"hour"``, in time order.
 
     Quiet periods between the first and last request appear as buckets with zero requests.
-    Raises :class:`ValueError` for an unknown ``bucket`` (even for empty input) and when the
-    range would need more than :data:`MAX_BUCKETS` buckets.
+    With ``fill_gaps=False`` only the buckets that have requests are returned, so a range of
+    any width is fine. Raises :class:`ValueError` for an unknown ``bucket`` (even for empty
+    input) and, when filling gaps, when the range would need more than :data:`MAX_BUCKETS`
+    buckets.
     """
     if not isinstance(bucket, str) or bucket not in BUCKET_SIZES:
         raise ValueError(f"bucket must be one of {sorted(BUCKET_SIZES)}, not {bucket!r}")
@@ -85,6 +89,11 @@ def requests_per_bucket(entries: Iterable[LogEntry], bucket: str = "hour") -> li
 
     if not requests:
         return []
+    if not fill_gaps:
+        return [
+            TimeBucket(start=start, requests=requests[start], errors=errors[start])
+            for start in sorted(requests)
+        ]
 
     first, last = min(requests), max(requests)
     count = (last - first) // step + 1

@@ -25,6 +25,9 @@ MAX_PROBLEMS_SHOWN = 10
 # Characters that Markdown or HTML would read as formatting inside a table cell.
 _MARKDOWN_SPECIAL = frozenset("\\`*_[]()<>|&#~!")
 
+# Said wherever the traffic series skips the periods without requests.
+GAPS_NOTE = "Quiet periods are not listed because the log covers too long a time."
+
 CHART_FILES = {
     "Status codes": "charts/status.png",
     "Traffic": "charts/traffic.png",
@@ -46,6 +49,9 @@ class Report:
     bucket: str
     buckets: list[TimeBucket]
     detections: list[Detection]
+    # False when the log covers too long a time to list every quiet period: ``buckets`` then
+    # holds only the periods that had requests.
+    gaps_filled: bool = True
 
 
 def _file_name(name: str) -> str:
@@ -70,13 +76,18 @@ def build_report(
     if bucket not in BUCKET_SIZES:
         raise ValueError(f"bucket must be one of: {', '.join(BUCKET_SIZES)}; got {bucket!r}")
     entries = parse_result.entries
+    try:
+        buckets, gaps_filled = requests_per_bucket(entries, bucket), True
+    except ValueError:  # the range is too wide to fill (bucket was checked above)
+        buckets, gaps_filled = requests_per_bucket(entries, bucket, fill_gaps=False), False
     return Report(
         source_name=_file_name(source_name),
         stats=parse_result.stats,
         summary=summarize(entries, top_n),
         bucket=bucket,
-        buckets=requests_per_bucket(entries, bucket),
+        buckets=buckets,
         detections=sorted(detections, key=lambda detection: detection.sort_key),
+        gaps_filled=gaps_filled,
     )
 
 
@@ -102,6 +113,7 @@ def to_dict(report: Report) -> dict:
         "summary": report.summary.to_dict(),
         "traffic": {
             "bucket": report.bucket,
+            "gaps_filled": report.gaps_filled,
             "buckets": [
                 {
                     "start": bucket.start.isoformat(),
@@ -211,6 +223,8 @@ def render_markdown(report: Report, *, charts: bool = False) -> str:
             ["Start (UTC)", "Requests", "Errors"],
             [[b.start.isoformat(), str(b.requests), str(b.errors)] for b in report.buckets],
         )
+        if not report.gaps_filled:
+            lines += ["", f"_{GAPS_NOTE}_"]
     else:
         lines.append("No traffic.")
     lines.append("")
