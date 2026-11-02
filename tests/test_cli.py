@@ -498,7 +498,7 @@ class TestUnexpectedOutputProblems:
         assert fake.flushes >= 1
 
     def test_interrupt(self, capsys, monkeypatch):
-        def interrupted(path):
+        def interrupted(*args):
             raise KeyboardInterrupt
 
         monkeypatch.setattr(cli, "parse_text", interrupted)

@@ -1,12 +1,12 @@
 # LogInsight
 
-A web server access-log analyzer. Point it at an Apache or Nginx access log in the Common or Combined format and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
+A web server access-log analyzer. Point it at an Apache or Nginx access log (Common or Combined format; it works out which server wrote it) and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
 
 > **Status:** early development. Parsing, analysis, attack detection, reports and the command line work. The web dashboard and cloud storage backends are still to come.
 
 ## What it does
 
-- **Parse** the Common and Combined log formats, which are the default access-log formats of Apache and Nginx, without choking on malformed lines. Dedicated Nginx support and format auto-detection are planned.
+- **Parse** the Common and Combined log formats of Apache and Nginx without choking on malformed lines. The server is detected from how it escapes special characters.
 - **Analyse** traffic: totals, top IPs and paths, status codes, data volume, traffic over time.
 - **Detect attacks** with readable rules: SQL injection, XSS, path traversal, command injection, probes for sensitive files, brute-force logins and scanning. Each detection comes with a severity and the evidence that triggered it.
 - **Two interfaces** over one core library: a command-line tool (ready) and a web dashboard (planned).
