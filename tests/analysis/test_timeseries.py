@@ -480,3 +480,52 @@ def test_the_input_is_not_modified_by_busiest_window():
     entries = [make(at(5)), make(at(0))]
     busiest_window(entries)
     assert [e.time for e in entries] == [at(5), at(0)]
+
+
+# --- sparse series for ranges too wide to fill ---------------------------------------------
+
+
+class TestSparseSeries:
+    def test_only_the_buckets_with_requests_are_returned(self):
+        entries = [
+            make(at(0)),
+            make(at(minutes=1)),
+            make(at(hours=5)),
+            make(at(hours=5, minutes=2)),
+        ]
+        buckets = requests_per_bucket(entries, "hour", fill_gaps=False)
+        assert counts(buckets) == [(T0, 2), (T0 + timedelta(hours=5), 2)]
+
+    def test_it_is_in_time_order_whatever_the_input_order(self):
+        entries = [make(at(hours=9)), make(at(0)), make(at(hours=3))]
+        starts = [b.start for b in requests_per_bucket(entries, "hour", fill_gaps=False)]
+        assert starts == sorted(starts) and len(starts) == 3
+
+    def test_errors_are_counted_in_the_right_bucket(self):
+        entries = [make(at(0), 500), make(at(0), 200), make(at(hours=7), 404)]
+        buckets = requests_per_bucket(entries, "hour", fill_gaps=False)
+        assert [(b.requests, b.errors) for b in buckets] == [(2, 1), (1, 1)]
+
+    def test_a_range_that_cannot_be_filled_is_fine_when_not_filling(self):
+        entries = [make(at(0)), make(datetime(1970, 1, 1, tzinfo=UTC))]
+        buckets = requests_per_bucket(entries, "minute", fill_gaps=False)
+        assert [b.requests for b in buckets] == [1, 1]
+
+    def test_the_default_still_fills_and_still_refuses(self):
+        entries = [make(at(0)), make(at(hours=5))]
+        assert len(requests_per_bucket(entries, "hour")) == 6
+        assert len(requests_per_bucket(entries, "hour", fill_gaps=True)) == 6
+        wide = [make(at(0)), make(datetime(1970, 1, 1, tzinfo=UTC))]
+        with pytest.raises(ValueError, match="time range too large"):
+            requests_per_bucket(wide, "minute")
+
+    def test_no_entries_and_a_bad_bucket_behave_as_before(self):
+        assert requests_per_bucket([], "hour", fill_gaps=False) == []
+        with pytest.raises(ValueError):
+            requests_per_bucket([make(at(0))], "day", fill_gaps=False)
+
+    def test_without_gaps_the_totals_equal_the_filled_totals(self):
+        entries = [make(at(minutes=m * 7), 500 if m % 3 == 0 else 200) for m in range(40)]
+        filled = requests_per_bucket(entries, "minute")
+        sparse = requests_per_bucket(entries, "minute", fill_gaps=False)
+        assert [b for b in filled if b.requests] == sparse

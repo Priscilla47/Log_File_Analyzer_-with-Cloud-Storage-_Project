@@ -38,7 +38,7 @@ $ loginsight analyze data/samples/demo.log
 ```
 
 - `--top N` sets how many top addresses and paths are listed (default 10, at least 1).
-- `--bucket minute|hour` sets the size of the traffic periods (default `hour`).
+- `--bucket minute|hour` sets the size of the traffic periods (default `hour`). Quiet periods between the first and last request are listed with zero requests. If the log covers too long a time for that (more than 100,000 periods, for example one line with a wrong year), only the periods that had requests are listed, the report says so, and the JSON has `"gaps_filled": false`.
 
 ```
 $ loginsight analyze data/samples/demo.log --top 5 --bucket minute

@@ -5,7 +5,7 @@ into a visible escape such as ``\\x1b``, so a hostile log line cannot send comma
 reader's terminal.
 """
 
-from loginsight.reporting.report import Report, human_bytes, periods
+from loginsight.reporting.report import GAPS_NOTE, Report, human_bytes, periods
 
 VIEWS = ("analyze", "detect")
 
@@ -77,6 +77,10 @@ def _analyze(report: Report) -> list[str]:
         "",
         f"Traffic per {report.bucket}: {periods(len(report.buckets))}, the busiest started at "
         f"{busiest.start.isoformat()} with {busiest.requests} requests",
+    ]
+    if not report.gaps_filled:
+        lines.append(GAPS_NOTE)
+    lines += [
         "",
         f"Detections: {len(report.detections)} (list them with `loginsight detect`)",
     ]

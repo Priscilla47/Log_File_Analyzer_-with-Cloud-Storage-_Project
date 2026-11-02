@@ -141,7 +141,7 @@ class TestRenderJson:
         assert list(data["tool"]) == ["name", "version"]
         assert data["tool"] == {"name": "loginsight", "version": __version__}
         assert list(data["source"]) == ["name", "parse"]
-        assert list(data["traffic"]) == ["bucket", "buckets"]
+        assert list(data["traffic"]) == ["bucket", "gaps_filled", "buckets"]
 
     def test_parse_statistics(self, tiny):
         parse = json.loads(render_json(build_report(*tiny, source_name="t")))["source"]["parse"]
