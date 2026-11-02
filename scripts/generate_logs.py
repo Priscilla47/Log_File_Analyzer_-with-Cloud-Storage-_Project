@@ -9,6 +9,10 @@ Usage:
     python scripts/generate_logs.py --seed 42 --lines 1000 --attack-ratio 0.1 \
         --start 2026-01-01T00:00:00Z --output out.log --labels out.labels.jsonl
 
+By default special characters are written the way Apache does (a quote as ``\\"``). With
+``--format nginx`` the same traffic is written the way Nginx does (``\\x22``, ``\\x5C`` and
+upper-case ``\\xHH`` for control and non-ASCII bytes), so both parsing modes have a sample.
+
 The labels file is JSON Lines with one object per attack line, for example
 ``{"line": 17, "label": "sql_injection", "kind": "signature", "ip": "203.0.113.7"}``.
 Lines are numbered from 1. Normal lines have no entry.
@@ -187,6 +191,19 @@ def _format(record: dict) -> str:
     )
 
 
+LOG_FORMATS = ("apache", "nginx")
+
+
+def _to_nginx(line: str) -> str:
+    """Rewrite a line the way Nginx escapes it: ``\\"`` and ``\\\\`` become ``\\x22`` and
+    ``\\x5C``, and any control or non-ASCII character becomes upper-case ``\\xHH`` per byte."""
+    line = line.replace("\\\\", "\\x5C").replace('\\"', "\\x22")
+    return "".join(
+        char if " " <= char <= "~" else "".join(f"\\x{byte:02X}" for byte in char.encode("utf-8"))
+        for char in line
+    )
+
+
 def _skewed_choice(rng: random.Random, items: list[str]) -> str:
     """Pick an item so that a few visitors send most of the traffic."""
     return items[min(int(rng.expovariate(1 / 20)), len(items) - 1)]
@@ -354,12 +371,15 @@ def generate(
     lines: int = DEFAULT_LINES,
     attack_ratio: float = DEFAULT_ATTACK_RATIO,
     start: datetime | None = None,
+    log_format: str = "apache",
 ) -> tuple[list[str], list[dict]]:
     """Build the log lines and the labels for the attack lines.
 
     Returns ``(log_lines, labels)``. ``labels`` holds one dict per attack line with the
     keys ``line`` (1-based), ``label``, ``kind`` and ``ip``, in line order.
     """
+    if log_format not in LOG_FORMATS:
+        raise ValueError(f"log_format must be one of: {', '.join(LOG_FORMATS)}")
     if lines < 0:
         raise ValueError("lines must not be negative")
     if not 0.0 <= attack_ratio <= 1.0:
@@ -390,6 +410,8 @@ def generate(
     records.sort(key=lambda item: item[0]["time"])  # stable, so ties keep their order
 
     log_lines = [_format(record) for record, _ in records]
+    if log_format == "nginx":
+        log_lines = [_to_nginx(line) for line in log_lines]
     labels = [
         {
             "line": number,
@@ -456,12 +478,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lines", type=_count, default=DEFAULT_LINES)
     parser.add_argument("--attack-ratio", type=_ratio, default=DEFAULT_ATTACK_RATIO)
     parser.add_argument("--start", type=_parse_start, default=_parse_start(DEFAULT_START))
+    parser.add_argument(
+        "--format",
+        choices=LOG_FORMATS,
+        default="apache",
+        help="how special characters are escaped (default: apache)",
+    )
     parser.add_argument("--output", type=Path, required=True, help="log file to write")
     parser.add_argument("--labels", type=Path, help="JSON Lines file for the attack labels")
     args = parser.parse_args(argv)
     _check_destinations(parser, args)
 
-    log_lines, labels = generate(args.seed, args.lines, args.attack_ratio, args.start)
+    log_lines, labels = generate(args.seed, args.lines, args.attack_ratio, args.start, args.format)
 
     log_text = "".join(f"{x}\n" for x in log_lines)
     labels_text = "".join(json.dumps(item) + "\n" for item in labels)

@@ -19,7 +19,7 @@ The command line drives this pipeline and contains no analysis logic of its own.
 All modules are in `src/loginsight/`.
 
 ### Parsing (`parsing/`)
-- `parser.py` reads Common and Combined log formats: `parse_line`, and `parse_file` which returns a `ParseResult`. It is deliberately tolerant: a line it cannot read is skipped and counted, never fatal, because real logs are messy. Lines are limited to 8192 characters, a missing time zone is taken as UTC, and a byte order mark and invalid bytes do not stop a read.
+- `parser.py` reads Common and Combined log formats: `parse_line`, `parse_text` and `parse_file`, which return a `ParseResult`. Apache and Nginx write the same layout, and differ in how they escape special characters inside a quoted field (Apache `\"`, Nginx `\x22`, `\x5C` and upper-case `\xHH`). The `log_format` argument (`"apache"`, the default, or `"nginx"`) says which; in `nginx` mode the escapes are decoded so the rules see the real characters. It is deliberately tolerant: a line it cannot read is skipped and counted, never fatal, because real logs are messy. Lines are limited to 8192 characters, a missing time zone is taken as UTC, and a byte order mark and invalid bytes do not stop a read.
 - `models.py` defines `LogEntry` (IP, time, method, path, query, protocol, status, size, referer, user agent, raw request), `ParseStats` (lines read, parsed and skipped, by reason, and the first few problems) and `ParseResult`.
 
 ### Analysis (`analysis/`)

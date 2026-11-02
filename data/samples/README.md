@@ -10,6 +10,7 @@ ranges reserved for documentation (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113
 | `access_sample.log` | Five hand-written lines in Combined format. Used by the parser tests. |
 | `demo.log` | 500 generated lines, about 10% of them attacks. |
 | `demo.labels.jsonl` | Ground truth for `demo.log`: which lines are attacks, and which kind. |
+| `demo_nginx.log` | The same traffic as `demo.log` written the way Nginx escapes special characters (`\x22` for a quote). The labels of `demo.labels.jsonl` apply to it line for line. |
 | `clean.log` | 300 generated lines with no attacks, to check that nothing is flagged by mistake. |
 
 ## How they were made
@@ -20,6 +21,7 @@ byte**. Run them from the repository root:
 
 ```
 python scripts/generate_logs.py --seed 42 --lines 500 --attack-ratio 0.1 --start 2026-01-01T00:00:00Z --output data/samples/demo.log --labels data/samples/demo.labels.jsonl
+python scripts/generate_logs.py --seed 42 --lines 500 --attack-ratio 0.1 --start 2026-01-01T00:00:00Z --format nginx --output data/samples/demo_nginx.log
 python scripts/generate_logs.py --seed 7 --lines 300 --attack-ratio 0 --start 2026-01-01T00:00:00Z --output data/samples/clean.log
 ```
 

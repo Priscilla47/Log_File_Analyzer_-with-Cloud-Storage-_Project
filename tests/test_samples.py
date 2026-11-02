@@ -24,6 +24,11 @@ DEMO_COMMAND = (
     + " ".join([*DEMO, *START])
     + " --output data/samples/demo.log --labels data/samples/demo.labels.jsonl"
 )
+NGINX_COMMAND = (
+    "python scripts/generate_logs.py "
+    + " ".join([*DEMO, *START])
+    + " --format nginx --output data/samples/demo_nginx.log"
+)
 CLEAN_COMMAND = (
     "python scripts/generate_logs.py "
     + " ".join([*CLEAN, *START])
@@ -70,6 +75,12 @@ def test_demo_files_are_reproduced_byte_for_byte(generator, tmp_path):
     assert labels_file.read_bytes() == (SAMPLES / "demo.labels.jsonl").read_bytes()
 
 
+def test_nginx_file_is_reproduced_byte_for_byte(generator, tmp_path):
+    log = tmp_path / "demo_nginx.log"
+    assert generator.main([*DEMO, *START, "--format", "nginx", "--output", str(log)]) == 0
+    assert log.read_bytes() == (SAMPLES / "demo_nginx.log").read_bytes()
+
+
 def test_clean_file_is_reproduced_byte_for_byte(generator, tmp_path):
     log = tmp_path / "clean.log"
     assert generator.main([*CLEAN, *START, "--output", str(log)]) == 0
@@ -79,6 +90,7 @@ def test_clean_file_is_reproduced_byte_for_byte(generator, tmp_path):
 def test_the_readme_documents_the_commands_used_here():
     readme = (SAMPLES / "README.md").read_text()
     assert DEMO_COMMAND in readme
+    assert NGINX_COMMAND in readme
     assert CLEAN_COMMAND in readme
 
 
@@ -86,7 +98,7 @@ def test_the_readme_states_that_the_data_is_synthetic():
     assert "synthetic" in (SAMPLES / "README.md").read_text().lower()
 
 
-@pytest.mark.parametrize("name", ["demo.log", "demo.labels.jsonl", "clean.log"])
+@pytest.mark.parametrize("name", ["demo.log", "demo_nginx.log", "demo.labels.jsonl", "clean.log"])
 def test_each_sample_stays_under_200_kb(name):
     assert (SAMPLES / name).stat().st_size < 200 * 1024
 
@@ -104,6 +116,40 @@ def test_samples_parse_without_skipping_a_line(name, count):
     assert stats.total_lines == count
     assert stats.skipped == 0
     assert stats.parsed == count
+
+
+def test_the_nginx_sample_parses_in_nginx_mode_without_skipping_a_line():
+    result = parse_file(SAMPLES / "demo_nginx.log", "nginx")
+    assert (result.stats.total_lines, result.stats.skipped) == (500, 0)
+
+
+def test_the_nginx_sample_differs_from_the_apache_one_only_where_a_quote_is_escaped():
+    apache = (SAMPLES / "demo.log").read_text().splitlines()
+    nginx = (SAMPLES / "demo_nginx.log").read_text().splitlines()
+    assert len(apache) == len(nginx) == 500
+    different = [n for n, (a, b) in enumerate(zip(apache, nginx, strict=True), 1) if a != b]
+    assert different == [141, 220]
+    for number in different:
+        assert apache[number - 1].replace('\\"', "\\x22") == nginx[number - 1]
+
+
+def test_both_samples_give_the_same_entries_once_the_escapes_are_decoded():
+    apache = parse_file(SAMPLES / "demo.log").entries
+    nginx = parse_file(SAMPLES / "demo_nginx.log", "nginx").entries
+    assert len(apache) == len(nginx)
+    for a, b in zip(apache, nginx, strict=True):
+        assert (a.ip, a.time, a.status, a.size) == (b.ip, b.time, b.status, b.size)
+        assert a.target.replace('\\"', '"') == b.target
+
+
+def test_the_nginx_sample_raises_the_same_detections_as_the_apache_one():
+    from loginsight.detection import detect
+
+    apache = detect(parse_file(SAMPLES / "demo.log").entries)
+    nginx = detect(parse_file(SAMPLES / "demo_nginx.log", "nginx").entries)
+    assert [(d.label, d.rule_id, d.ip, d.time, d.count) for d in nginx] == [
+        (d.label, d.rule_id, d.ip, d.time, d.count) for d in apache
+    ]
 
 
 # --- labels ---------------------------------------------------------------------------

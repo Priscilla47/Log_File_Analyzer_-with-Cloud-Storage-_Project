@@ -132,6 +132,8 @@ The rules look at the path and query string of a request only, after undoing URL
 python scripts/generate_logs.py --seed 1 --lines 2000 --attack-ratio 0.05 --output my.log --labels my.labels.jsonl
 ```
 
+Add `--format nginx` to write special characters the way Nginx does (`\x22` instead of `\"`); the traffic is the same. `data/samples/demo_nginx.log` is the demo log written that way.
+
 All addresses come from ranges reserved for documentation, so the logs hold no real data. See [`data/samples/README.md`](../data/samples/README.md) for the arguments and the format of the labels file.
 
 ## Changing the rules

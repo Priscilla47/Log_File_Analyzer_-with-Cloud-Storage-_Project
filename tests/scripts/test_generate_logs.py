@@ -493,3 +493,72 @@ def test_overwriting_an_existing_output_is_still_allowed(gen, tmp_path):
     log.write_text("old\n")
     assert gen.main(["--lines", "10", "--output", str(log)]) == 0
     assert len(log.read_text().splitlines()) == 10
+
+
+class TestNginxFormat:
+    def test_the_default_is_the_apache_form_and_is_unchanged(self, gen):
+        assert gen.generate(seed=3, lines=200) == gen.generate(
+            seed=3, lines=200, log_format="apache"
+        )
+
+    def test_nginx_lines_differ_only_in_escapes(self, gen):
+        apache, labels_a = gen.generate(seed=42, lines=500, log_format="apache")
+        nginx, labels_n = gen.generate(seed=42, lines=500, log_format="nginx")
+        assert labels_a == labels_n  # the same traffic, so the same labels
+        assert [n for n, (a, b) in enumerate(zip(apache, nginx, strict=True)) if a != b]
+        for a, b in zip(apache, nginx, strict=True):
+            assert b == gen._to_nginx(a)
+
+    def test_nginx_output_has_no_escaped_quote_and_no_lone_backslash(self, gen):
+        lines, _ = gen.generate(seed=42, lines=500, log_format="nginx")
+        for line in lines:
+            assert '\\"' not in line
+            assert "\\" not in line.replace("\\x22", "").replace("\\x5C", "")
+
+    def test_the_same_seed_gives_the_same_nginx_output(self, gen):
+        first = gen.generate(seed=9, lines=300, log_format="nginx")
+        assert first == gen.generate(seed=9, lines=300, log_format="nginx")
+
+    def test_an_unknown_format_is_refused(self, gen):
+        with pytest.raises(ValueError, match="log_format"):
+            gen.generate(lines=1, log_format="iis")
+
+    def test_the_command_line_option(self, gen, tmp_path):
+        apache, nginx = tmp_path / "a.log", tmp_path / "n.log"
+        assert gen.main(["--lines", "500", "--output", str(apache)]) == 0
+        assert gen.main(["--lines", "500", "--format", "nginx", "--output", str(nginx)]) == 0
+        expected, _ = gen.generate(lines=500, log_format="nginx")  # 500 lines hold a quote
+        assert nginx.read_text() == "".join(f"{line}\n" for line in expected)
+        assert apache.read_text() != nginx.read_text()
+
+    def test_the_command_line_refuses_an_unknown_format(self, gen, tmp_path, capsys):
+        with pytest.raises(SystemExit) as stop:
+            gen.main(["--format", "iis", "--output", str(tmp_path / "x.log")])
+        assert stop.value.code == 2
+        assert "invalid choice" in capsys.readouterr().err
+
+
+class TestToNginx:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("plain text", "plain text"),
+            ('say \\"hi\\"', "say \\x22hi\\x22"),
+            ("back\\\\slash", "back\\x5Cslash"),
+            ("café", "caf\\xC3\\xA9"),
+            ("tab\there", "tab\\x09here"),
+            ("\x16\x03\x01", "\\x16\\x03\\x01"),
+            ("日", "\\xE6\\x97\\xA5"),
+            ('\\\\\\"', "\\x5C\\x22"),
+            ("", ""),
+        ],
+    )
+    def test_escapes(self, gen, text, expected):
+        assert gen._to_nginx(text) == expected
+
+    def test_what_it_writes_is_read_back_by_the_nginx_mode(self, gen):
+        original = 'GET /p?q=é"x"\\ HTTP/1.1'
+        apache_form = original.replace("\\", "\\\\").replace('"', '\\"')
+        line = '203.0.113.5 - - [10/Oct/2026:10:00:01 +0000] "' + apache_form + '" 200 5 "-" "-"'
+        entry = parse_line(gen._to_nginx(line), "nginx")
+        assert entry.request == original
