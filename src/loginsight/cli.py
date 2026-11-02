@@ -6,16 +6,19 @@ file, 2 wrong usage.
 """
 
 import argparse
+import errno
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from loginsight import __version__
 from loginsight.detection import Severity, detect
-from loginsight.parsing.parser import parse_file
+from loginsight.parsing.parser import parse_text
 from loginsight.reporting.report import build_report, render_json, render_markdown
 from loginsight.reporting.text import printable, render_text
-from loginsight.reporting.writers import write_report
+from loginsight.reporting.writers import write_to_storage
+from loginsight.storage import LocalStorage
 
 PROG = "loginsight"
 # More skipped lines than this share of the file earns a warning on stderr.
@@ -114,11 +117,21 @@ def _silence_stdout() -> None:
         pass
 
 
+def _read_log(name: str) -> str:
+    """The text of the log file ``name``, read through the storage layer.
+
+    The file is resolved first, so a link such as ``/var/log/access.log`` that points elsewhere
+    works, and the storage is confined to the folder that really holds the file.
+    """
+    path = Path(name).resolve()
+    if not path.name:  # the root of the file system
+        raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), name)
+    return LocalStorage(path.parent).read_text(path.name)
+
+
 def _run(args: argparse.Namespace) -> int:
-    # Temporary exception to the architecture: every file access should go through the storage
-    # layer, which is built next. The command reads the file directly until it is switched over.
     try:
-        result = parse_file(args.file)
+        result = parse_text(_read_log(args.file))
     except OSError as error:
         reason = error.strerror or type(error).__name__
         return _fail(f"cannot read {args.file}: {reason}")
@@ -151,11 +164,11 @@ def _run(args: argparse.Namespace) -> int:
 
     if args.output is not None:
         try:
-            paths = write_report(report, args.output)
+            keys = write_to_storage(report, LocalStorage(args.output))
         except OSError as error:
             reason = error.strerror or type(error).__name__
             return _fail(f"cannot write to {args.output}: {reason}")
-        _print("".join(f"{path}\n" for path in paths))
+        _print("".join(f"{Path(args.output) / key}\n" for key in keys))
     elif args.format == "json":
         _print(render_json(report))
     elif args.format == "md":

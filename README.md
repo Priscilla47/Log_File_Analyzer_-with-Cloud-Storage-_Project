@@ -2,7 +2,7 @@
 
 A web server access-log analyzer. Point it at an Apache or Nginx access log in the Common or Combined format and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
 
-> **Status:** early development. Parsing, analysis, attack detection, reports and the command line work. The web dashboard and cloud storage are still to come.
+> **Status:** early development. Parsing, analysis, attack detection, reports and the command line work. The web dashboard and cloud storage backends are still to come.
 
 ## What it does
 
@@ -10,7 +10,7 @@ A web server access-log analyzer. Point it at an Apache or Nginx access log in t
 - **Analyse** traffic: totals, top IPs and paths, status codes, data volume, traffic over time.
 - **Detect attacks** with readable rules: SQL injection, XSS, path traversal, command injection, probes for sensitive files, brute-force logins and scanning. Each detection comes with a severity and the evidence that triggered it.
 - **Two interfaces** over one core library: a command-line tool (ready) and a web dashboard (planned).
-- **Pluggable storage** (planned): local files first, cloud storage later.
+- **Pluggable storage**: every file goes through one small interface. Local files work today; a cloud backend is planned.
 
 ## Why
 

@@ -1,6 +1,6 @@
 # Project structure
 
-This document explains how the repository is laid out and why. Parsing, analysis, detection, reporting and the command line are built; `storage/` and `dashboard/` are empty packages waiting for their turn (see the roadmap in the README).
+This document explains how the repository is laid out and why. Parsing, analysis, detection, reporting, storage and the command line are built; `dashboard/` is an empty package waiting for its turn (see the roadmap in the README).
 
 ```
 .
@@ -8,7 +8,7 @@ This document explains how the repository is laid out and why. Parsing, analysis
 │   ├── parsing/       turns raw log lines into structured entries
 │   ├── analysis/      computes statistics from entries
 │   ├── detection/     classifies attacks with rules (the rules are in detection/rules/)
-│   ├── storage/       reads and writes files (local now, cloud later): not built yet
+│   ├── storage/       reads and writes files behind one interface (local now, cloud later)
 │   ├── reporting/     builds the report and writes JSON, Markdown, text and charts
 │   ├── dashboard/     the web interface: not built yet
 │   ├── cli.py         the command-line interface
@@ -42,7 +42,7 @@ Keeping them separate means each can be understood, tested and changed on its ow
 `cli.py` and (later) `dashboard/` contain no analysis logic. They only collect input, call the other packages, and show the result. That way both interfaces always give the same answers, and the logic that matters is tested once, in the core.
 
 ### Storage is its own package
-Anything that touches files or, later, cloud buckets is meant to go through `storage/`. The package is still empty, so for now the command line reads the log and `reporting/writers.py` writes the report files directly; both will be switched to `storage/` when it exists. The rest of the code never opens a file. This is what makes it possible to add cloud storage later without rewriting the analysis, and it lets tests run entirely offline.
+Anything that touches files or, later, cloud buckets goes through `storage/`: the command line reads the log and writes the report files through it, and the rest of the code never opens a file. This is what makes it possible to add cloud storage later without rewriting the analysis, and it lets tests run entirely offline.
 
 ### Sample data is synthetic
 `data/samples/` holds small generated logs, with no real IP addresses or personal data. This keeps the repository safe to publish and gives the tests known, reproducible inputs.

@@ -1,6 +1,6 @@
 # Architecture
 
-This describes LogInsight as it is built today. Parts that do not exist yet (storage and the dashboard) are marked **planned**. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
+This describes LogInsight as it is built today. The one part that does not exist yet, the dashboard, is marked **planned**. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
 
 ## Overview
 
@@ -12,7 +12,7 @@ Data flows in one direction, from a raw log file to a report:
                                         └──► detection ──► detections ──┘
 ```
 
-The command line drives this pipeline and contains no analysis logic of its own. The dashboard (**planned**) will drive the same pipeline. File access will go through a storage layer (**planned**); until it exists, the command line reads the log and writes the report files directly, and that is the one place that does.
+The command line drives this pipeline and contains no analysis logic of its own. The dashboard (**planned**) will drive the same pipeline. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
 
 ## Components
 
@@ -73,14 +73,18 @@ The JSON layout is `tool`, `source` (name and parse statistics), `summary`, `tra
 - **CLI (`cli.py`, `__main__.py`):** `loginsight analyze` and `loginsight detect`, with a choice of output format. Exit code 0 is success, 1 a problem with a file, 2 wrong usage.
 - **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail.
 
-### Storage (`storage/`), planned
-A small interface for reading and writing files (read, write, list, exists). The first implementation will use the local file system. Cloud backends are added later by implementing the same interface, with no change to the rest of the code. The package exists but is empty.
+### Storage (`storage/`)
+A small interface for reading and writing named data.
+- `base.py`: the `Storage` protocol (`read_text`, `write_bytes`, `list`, `exists`), the key rules (`check_key`: relative, `/`-separated, no `.` or `..`) and the errors `StorageError`, `MissingKeyError` and `InvalidKeyError`.
+- `local.py`: `LocalStorage`, which maps keys to files below a root folder, refuses anything that leads outside it (including through symbolic links), and writes atomically through a hidden temporary file.
+
+Cloud backends are added later by implementing the same protocol, with no change to the rest of the code. The tests run the same contract against every backend.
 
 ## Design decisions
 
 - **Rule-based detection, not machine learning.** Rules are readable, testable, need no training data, and every alert can be explained. Statistical anomaly detection may be added later as an optional extra.
 - **A pure core.** Parsing, analysis, detection and report building take data in and return data out. Only the writers and the command line touch the outside world.
-- **Storage behind an interface (planned).** The tool works on local files today, and cloud storage becomes a new backend instead of a rewrite.
+- **Storage behind an interface.** The tool works on local files today, and cloud storage becomes a new backend instead of a rewrite.
 - **Tolerant parsing.** Bad lines are counted and reported, so one corrupt line never stops an analysis.
 - **Reproducible output.** Reports hold no timestamps of their own, so they can be compared byte for byte.
 - **Synthetic sample data.** Demos and tests use generated logs with known attacks, which also lets detection quality be measured as precision and recall.
