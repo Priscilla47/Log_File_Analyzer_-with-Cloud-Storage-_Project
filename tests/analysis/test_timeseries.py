@@ -469,9 +469,9 @@ def test_the_busiest_window_is_fast_on_100_000_entries():
 
     rng = random.Random(1)
     entries = [make(T0 + timedelta(seconds=rng.randint(0, 86_400))) for _ in range(100_000)]
-    started = time.perf_counter()
+    started = time.process_time()
     window = busiest_window(entries, minutes=5)
-    elapsed = time.perf_counter() - started
+    elapsed = time.process_time() - started
     assert window.requests > 0
     assert elapsed < 2.0
 

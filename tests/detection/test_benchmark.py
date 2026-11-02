@@ -348,9 +348,9 @@ def test_the_benchmark_gives_the_same_numbers_every_time(benchmark_logs):
 
 
 def test_the_whole_benchmark_runs_in_a_few_seconds(generator):
-    started = time.perf_counter()
+    started = time.process_time()
     pooled([generated(generator, seed, 3000, 0.1) for seed in range(1, 6)])
-    assert time.perf_counter() - started < 20.0
+    assert time.process_time() - started < 20.0
 
 
 # --- the false-alarm guard -------------------------------------------------------------

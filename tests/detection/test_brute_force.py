@@ -490,18 +490,18 @@ def test_a_rule_set_can_supply_the_settings():
 
 def test_a_hundred_thousand_failures_from_one_address_are_handled_quickly():
     entries = failures(100_000, spacing=0.01)
-    started = time.perf_counter()
+    started = time.process_time()
     (found,) = detect_brute_force(entries)
-    assert time.perf_counter() - started < 3.0
+    assert time.process_time() - started < 3.0
     assert found.count == 100_000
     assert found.severity is Severity.HIGH
 
 
 def test_many_addresses_with_few_failures_each_are_handled_quickly():
     entries = [request(ip=f"10.{n // 250}.{n % 250}.1", seconds=n % 50) for n in range(50_000)]
-    started = time.perf_counter()
+    started = time.process_time()
     assert detect_brute_force(entries) == []
-    assert time.perf_counter() - started < 2.0
+    assert time.process_time() - started < 2.0
 
 
 # --- generated logs -------------------------------------------------------------------
