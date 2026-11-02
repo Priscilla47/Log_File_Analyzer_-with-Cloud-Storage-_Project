@@ -143,6 +143,12 @@ def test_the_documented_defaults():
         "gobuster",
         "wfuzz",
         "nuclei",
+        "zgrab",
+        "wpscan",
+        "acunetix",
+        "nessus",
+        "openvas",
+        "w3af",
     } <= set(scanner.user_agents)
 
 

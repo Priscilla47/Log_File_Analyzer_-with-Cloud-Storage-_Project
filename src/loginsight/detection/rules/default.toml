@@ -127,6 +127,13 @@ severity = "high"
 description = "PHP and other stream wrappers (php://filter, expect://, file:///) used for file inclusion"
 pattern = '''\b(?:php|expect|phar|zip|glob|gopher|ssh2|jar)://|\bfile:///|\bdata://'''
 
+[[signature]]
+id = "traversal-overlong-utf8"
+label = "path_traversal"
+severity = "high"
+description = "Traversal written as overlong UTF-8 (..%c0%af, %c0%ae%c0%ae/), used to get past filters that only look for ../"
+pattern = '''\.\.\ufffd{1,2}(?:\.\.|(?:etc|windows|winnt|boot|proc|bin|home|root|var|scripts|cgi-bin)\b)|\ufffd{4}/'''
+
 # ---------------------------------------------------------------------------------------------
 # Command injection (critical)
 # ---------------------------------------------------------------------------------------------
@@ -151,6 +158,13 @@ label = "command_injection"
 severity = "critical"
 description = "Reverse-shell building blocks (/dev/tcp, nc -e, bash -i, ${IFS}, mkfifo)"
 pattern = '''/dev/(?:tcp|udp)/|\bnc(?:at)?\b[^|;&]{0,40}\s-\w*e\b|\bbash\s+-i\b|\$\{?ifs\}?|\bmkfifo\b|\bsocat\b[^|]{0,40}exec:'''
+
+[[signature]]
+id = "cmdi-jndi-lookup"
+label = "command_injection"
+severity = "critical"
+description = "A JNDI lookup such as ${jndi:ldap://...}, also split with nested lookups, that makes a vulnerable Java logger fetch and run remote code (Log4Shell)"
+pattern = '''\$\{\s*jndi\s*:|\$\{(?:[^}${]|\$\{[^}]{0,30}\}){1,40}?di\s*:|\$\{(?:\$\{[^}]{0,30}\}){3,5}\s*:'''
 
 # ---------------------------------------------------------------------------------------------
 # Probes for sensitive files and admin pages (sensitive_file_probe)
@@ -203,6 +217,20 @@ severity = "low"
 description = "Login and admin pages of common software (WordPress, phpMyAdmin, Tomcat manager), often probed by scanners"
 pattern = '''^[^?]*/(?:wp-login\.php|wp-admin|xmlrpc\.php|phpmyadmin(?:[-_]?\d[\w.-]*)?|pma|myadmin|adminer(?:\.php)?|manager/html)(?:[/;?]|$)'''
 
+[[signature]]
+id = "probe-phpunit-eval"
+label = "sensitive_file_probe"
+severity = "high"
+description = "PHPUnit's eval-stdin.php, an exposed test helper that runs any PHP it is sent (CVE-2017-9841)"
+pattern = '''^[^?]*/phpunit/[^?]*eval-stdin\.php(?:$|[?;])'''
+
+[[signature]]
+id = "probe-router-exploit"
+label = "sensitive_file_probe"
+severity = "medium"
+description = "Pages of home-router firmware (Boa, GPON, D-Link HNAP) that mass-scanners try to exploit"
+pattern = '''^[^?]*/(?:boaform/admin/formlogin|gponform/diag_form|hnap1)(?:[/;?]|$)'''
+
 # ---------------------------------------------------------------------------------------------
 # Behavioural rules look across requests from one address instead of at a single request.
 # Every key is optional: a missing one keeps the default shown here.
@@ -216,4 +244,7 @@ login_paths = ["/login", "/signin", "/wp-login.php"]
 [behaviour.scanner]
 threshold = 15          # distinct 404 paths ...
 window_seconds = 60     # ... within this many seconds
-user_agents = ["sqlmap", "nikto", "nmap", "masscan", "dirbuster", "gobuster", "wfuzz", "nuclei"]
+user_agents = [
+  "sqlmap", "nikto", "nmap", "masscan", "dirbuster", "gobuster", "wfuzz", "nuclei",
+  "zgrab", "wpscan", "acunetix", "nessus", "openvas", "w3af",
+]
