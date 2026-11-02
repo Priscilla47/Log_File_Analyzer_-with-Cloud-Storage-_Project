@@ -78,7 +78,7 @@ def test_a_storage_error_without_a_message_shows_its_class(virtual, monkeypatch,
     def broken(path):
         raise MissingKeyError("odd")
 
-    monkeypatch.setattr(cli, "_read_log", broken)
+    monkeypatch.setattr(cli, "_read_file", broken)
     err = run(capsys, "analyze", "x.log")[2]
     assert err == "loginsight: error: cannot read x.log: MissingKeyError\n"
 
