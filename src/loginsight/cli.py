@@ -14,6 +14,7 @@ from pathlib import Path
 
 from loginsight import __version__
 from loginsight.detection import Severity, detect
+from loginsight.parsing.detect import detect_log_format
 from loginsight.parsing.parser import parse_text
 from loginsight.reporting.report import build_report, render_json, render_markdown
 from loginsight.reporting.text import printable, render_text
@@ -131,10 +132,11 @@ def _read_log(name: str) -> str:
 
 def _run(args: argparse.Namespace) -> int:
     try:
-        result = parse_text(_read_log(args.file))
+        text = _read_log(args.file)
     except OSError as error:
         reason = error.strerror or type(error).__name__
         return _fail(f"cannot read {args.file}: {reason}")
+    result = parse_text(text, detect_log_format(text))
 
     stats = result.stats
     if stats.total_lines and not stats.parsed:
