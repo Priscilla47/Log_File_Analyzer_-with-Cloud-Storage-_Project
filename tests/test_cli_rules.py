@@ -181,3 +181,42 @@ class TestMistakes:
 def test_the_help_mentions_the_option(capsys):
     status, out, _ = run(capsys, "detect", "--help")
     assert status == EXIT_OK and "--rules" in out
+
+
+class TestRulesThatReadOtherFields:
+    SHELLSHOCK = (
+        '203.0.113.9 - - [10/Oct/2026:10:00:01 +0000] "GET /cgi-bin/test.sh HTTP/1.1" 200 5 '
+        '"-" "() { :;}; /bin/bash -c id"\n'
+    )
+
+    def test_the_built_in_rules_catch_shellshock_from_the_command_line(self, tmp_path, capsys):
+        path = tmp_path / "s.log"
+        path.write_text(GOOD + self.SHELLSHOCK)
+        status, out, err = run(capsys, "detect", path, "--format", "json")
+        assert (status, err) == (EXIT_OK, "")
+        (found,) = json.loads(out)["detections"]
+        assert (found["rule_id"], found["severity"]) == ("cmdi-shellshock", "critical")
+        assert found["evidence"] == "user agent: () { :;}; /bin/bash -c id"
+
+    def test_a_custom_rule_can_read_the_referer(self, tmp_path, capsys):
+        rules = tmp_path / "r.toml"
+        rules.write_text(
+            CUSTOM.replace("^/secret-area", "spam\\.example").replace(
+                "[[signature]]", '[[signature]]\nfield = "referer"', 1
+            )
+        )
+        path = tmp_path / "ref.log"
+        path.write_text(
+            '203.0.113.9 - - [10/Oct/2026:10:00:01 +0000] "GET / HTTP/1.1" 200 5 '
+            '"http://spam.example/x" "x"\n' + GOOD
+        )
+        assert found(capsys, "detect", path, "--rules", rules) == [
+            ("custom-secret-area", "critical")
+        ]
+
+    def test_a_bad_field_in_a_rules_file_is_one_clear_error(self, log, tmp_path, capsys):
+        rules = tmp_path / "bad.toml"
+        rules.write_text(CUSTOM.replace("[[signature]]", '[[signature]]\nfield = "cookie"', 1))
+        status, out, err = run(capsys, "detect", log, "--rules", rules)
+        assert (status, out) == (EXIT_PROBLEM, "")
+        assert "'cookie'" in err and "target, user_agent, referer" in err

