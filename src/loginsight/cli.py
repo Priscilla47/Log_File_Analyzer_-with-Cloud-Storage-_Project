@@ -43,6 +43,7 @@ def _at_least_one(text: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The argument parser of the ``loginsight`` command with its ``analyze`` and ``detect``."""
     parser = argparse.ArgumentParser(
         prog=PROG, description="Analyze web server access logs and detect attacks."
     )
@@ -211,7 +212,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as stop:  # --help, --version and usage errors
-        return stop.code  # argparse always exits with a number
+        code = stop.code
+        if code is None:  # SystemExit() means success
+            return EXIT_OK
+        return code if isinstance(code, int) else EXIT_USAGE  # a message means a usage error
     try:
         return _run(args)
     except KeyboardInterrupt:

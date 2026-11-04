@@ -11,7 +11,7 @@ from loginsight.storage.base import InvalidKeyError, MissingKeyError, check_key,
 class LocalStorage:
     """Keys are paths below ``root``. Nothing outside ``root`` can be read or written."""
 
-    def __init__(self, root) -> None:
+    def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve()
 
     def _path(self, key: str) -> Path:
@@ -26,6 +26,7 @@ class LocalStorage:
         return path
 
     def read_text(self, key: str) -> str:
+        """The text of ``key`` (UTF-8, byte order mark dropped, bad bytes replaced)."""
         path = self._path(key)
         try:
             return path.read_bytes().decode("utf-8-sig", errors="replace")
@@ -33,6 +34,7 @@ class LocalStorage:
             raise MissingKeyError(errno.ENOENT, os.strerror(errno.ENOENT), key) from error
 
     def write_bytes(self, key: str, data: bytes) -> None:
+        """Store ``data`` under ``key`` atomically, creating missing folders."""
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         # A hidden name in the same folder, so the final rename stays on one file system.
@@ -46,6 +48,7 @@ class LocalStorage:
             raise
 
     def list(self, prefix: str = "") -> list[str]:
+        """The sorted keys that start with ``prefix``."""
         check_prefix(prefix)
         keys = []
         for path in self.root.rglob("*"):
@@ -59,4 +62,5 @@ class LocalStorage:
         return sorted(keys)
 
     def exists(self, key: str) -> bool:
+        """Whether ``key`` is an existing file in the storage."""
         return self._path(key).is_file()

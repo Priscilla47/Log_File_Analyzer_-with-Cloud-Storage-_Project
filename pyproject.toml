@@ -42,6 +42,18 @@ markers = [
     "e2e: run the real command in a new process (about a minute), run with `pytest -m e2e`",
 ]
 
+[tool.mypy]
+files = ["src"]
+python_version = "3.10"
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+check_untyped_defs = true
+# matplotlib ships no complete type information, and tomli is only installed on Python 3.10
+[[tool.mypy.overrides]]
+module = ["matplotlib.*", "tomli"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
