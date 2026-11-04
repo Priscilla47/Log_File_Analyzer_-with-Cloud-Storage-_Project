@@ -1,6 +1,6 @@
 # Architecture
 
-This describes LogInsight as it is built today. The one part that does not exist yet, the dashboard, is marked **planned**. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
+This describes LogInsight as it is built today. The dashboard is only started (a page with a file chooser) and is marked **planned**. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
 
 ## Overview
 
@@ -12,7 +12,7 @@ Data flows in one direction, from a raw log file to a report:
                                         └──► detection ──► detections ──┘
 ```
 
-The command line drives this pipeline and contains no analysis logic of its own. The dashboard (**planned**) will drive the same pipeline. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
+The command line drives this pipeline and contains no analysis logic of its own. The dashboard (**planned**) will drive the same pipeline through `workflow.py`. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
 
 ## Components
 
@@ -70,9 +70,12 @@ That number comes from synthetic logs made by a simple generator. It shows that 
 
 The JSON layout is `tool`, `source` (name and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
 
+### One analysis for every interface (`workflow.py`)
+`analyze_text(text, source_name, ...)` does the whole job from the text of a log to a `Report`: it detects the format, parses, refuses a log where no line can be read (`NothingReadError`), collects the "many lines skipped" warning, applies the rules and builds the report. The command line and the dashboard both call it, so they cannot disagree about a number.
+
 ### Interfaces
 - **CLI (`cli.py`, `__main__.py`):** `loginsight analyze` and `loginsight detect`, with a choice of output format. Exit code 0 is success, 1 a problem with a file, 2 wrong usage.
-- **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail.
+- **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail. Started: `loginsight dashboard` serves a page with a file chooser. `app.py` is the page and holds layout only; `data.py` holds what it shows and never imports Streamlit; `launch.py` builds the command that serves it (this computer only, no usage statistics) and checks Streamlit is installed. Streamlit is an optional extra, so the rest of the tool works without it.
 
 ### Storage (`storage/`)
 A small interface for reading and writing named data.

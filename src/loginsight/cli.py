@@ -1,30 +1,37 @@
 """The ``loginsight`` command line: a thin layer over the library.
 
-It collects arguments, calls the parser, the detection rules and the report code, and prints or
-writes the result. Exit codes: 0 success (finding attacks is not an error), 1 a problem with a
-file, 2 wrong usage.
+It collects arguments, calls the shared analysis and the report code, and prints or writes the
+result, or starts the dashboard. Exit codes: 0 success (finding attacks is not an error), 1 a
+problem with a file, 2 wrong usage.
 """
 
 import argparse
 import errno
 import os
+import signal
+import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from loginsight import __version__
-from loginsight.detection import Severity, detect, load_rules
+from loginsight.dashboard.launch import (
+    DEFAULT_PORT,
+    MAX_PORT,
+    MIN_PORT,
+    dashboard_url,
+    streamlit_available,
+    streamlit_command,
+)
+from loginsight.detection import Severity, load_rules
 from loginsight.detection.ruleset import RulesError, RuleSet, parse_rules
-from loginsight.parsing.detect import detect_log_format
-from loginsight.parsing.parser import parse_text
-from loginsight.reporting.report import build_report, render_json, render_markdown
+from loginsight.reporting.report import render_json, render_markdown
 from loginsight.reporting.text import printable, render_text
 from loginsight.reporting.writers import write_to_storage
 from loginsight.storage import LocalStorage
+from loginsight.workflow import NothingReadError, analyze_text
 
 PROG = "loginsight"
-# More skipped lines than this share of the file earns a warning on stderr.
-SKIP_WARNING_SHARE = 0.10
 
 EXIT_OK = 0
 EXIT_PROBLEM = 1
@@ -39,6 +46,18 @@ def _at_least_one(text: str) -> int:
         raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
     if number < 1:
         raise argparse.ArgumentTypeError(f"must be at least 1, got {number}")
+    return number
+
+
+def _port(text: str) -> int:
+    try:
+        number = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"port {text!r} is not a whole number") from None
+    if not MIN_PORT <= number <= MAX_PORT:
+        raise argparse.ArgumentTypeError(
+            f"port must be between {MIN_PORT} and {MAX_PORT}, got {number}"
+        )
     return number
 
 
@@ -94,6 +113,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="low",
         help="hide detections below this level (default: low)",
     )
+
+    dashboard = commands.add_parser(
+        "dashboard",
+        help="open the web dashboard",
+        description="Open the web dashboard in the browser (needs the dashboard extra).",
+    )
+    dashboard.add_argument(
+        "--port",
+        type=_port,
+        default=DEFAULT_PORT,
+        metavar="N",
+        help=f"port to serve the dashboard on (default: {DEFAULT_PORT})",
+    )
     return parser
 
 
@@ -146,7 +178,48 @@ def _load_rules(name: str | None) -> RuleSet:
     return parse_rules(_read_file(name), source=name)
 
 
+def _dashboard(args: argparse.Namespace) -> int:
+    """Start the Streamlit app, or say how to install it."""
+    if not streamlit_available():
+        print(
+            f"{PROG}: error: the dashboard needs Streamlit, which is not installed. "
+            "Install it with:  pip install 'loginsight[dashboard]'",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    try:
+        process = subprocess.Popen(streamlit_command(args.port))
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        return _fail(f"cannot start Streamlit: {reason}")
+    # Streamlit is told not to open a browser (see streamlit_command), so say where it is.
+    _print(
+        f"LogInsight dashboard: open {dashboard_url(args.port)} in your browser "
+        "(press Ctrl+C to stop)\n"
+    )
+
+    def stop(number: int, frame: object) -> None:
+        raise KeyboardInterrupt  # being asked to terminate ends the dashboard like Ctrl+C
+
+    previous = signal.signal(signal.SIGTERM, stop)
+    try:
+        return process.wait()
+    except KeyboardInterrupt:  # Ctrl+C is how the dashboard is stopped, not a failure
+        try:  # the terminal sent it to Streamlit too; give it a moment to finish
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        return EXIT_OK
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        if process.poll() is None:  # whatever ended this command, the server must not stay behind
+            process.terminate()
+
+
 def _run(args: argparse.Namespace) -> int:
+    if args.command == "dashboard":
+        return _dashboard(args)
     try:
         rules = _load_rules(args.rules)
     except RulesError as error:
@@ -161,35 +234,24 @@ def _run(args: argparse.Namespace) -> int:
     except OSError as error:
         reason = error.strerror or type(error).__name__
         return _fail(f"cannot read {args.file}: {reason}")
-    log_format = detect_log_format(text)
-    result = parse_text(text, log_format)
-
-    stats = result.stats
-    if stats.total_lines and not stats.parsed:
-        # Nothing was read, so a report would say "no attacks" about a file never understood.
-        reasons = ", ".join(f"{name}: {count}" for name, count in stats.skipped_by_reason.items())
+    minimum = Severity.from_name(args.min_severity) if args.command == "detect" else Severity.LOW
+    try:
+        analysis = analyze_text(
+            text,
+            args.file,
+            rules=rules,
+            min_severity=minimum,
+            top_n=getattr(args, "top", 10),
+            bucket=getattr(args, "bucket", "hour"),
+        )
+    except NothingReadError as error:
         return _fail(
-            f"none of the {stats.total_lines} lines in {printable(args.file)} could be read "
-            f"as an access-log entry ({reasons})"
+            f"none of the {error.total_lines} lines in {printable(args.file)} could be read "
+            f"as an access-log entry ({error.reasons})"
         )
-    if stats.total_lines and stats.skipped / stats.total_lines > SKIP_WARNING_SHARE:
-        _warn(
-            f"{stats.skipped} of {stats.total_lines} lines "
-            f"({stats.skipped / stats.total_lines:.0%}) could not be read"
-        )
-
-    detections = detect(result.entries, rules)
-    if args.command == "detect":
-        minimum = Severity.from_name(args.min_severity)
-        detections = [d for d in detections if d.severity >= minimum]
-    report = build_report(
-        result,
-        detections,
-        source_name=args.file,
-        top_n=getattr(args, "top", 10),
-        bucket=getattr(args, "bucket", "hour"),
-        log_format=log_format,
-    )
+    for warning in analysis.warnings:
+        _warn(warning)
+    report = analysis.report
 
     if args.output is not None:
         try:

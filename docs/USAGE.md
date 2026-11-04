@@ -18,6 +18,12 @@ This installs the `loginsight` command. Check it:
 $ loginsight --version
 ```
 
+The dashboard is optional and needs Streamlit (Python 3.11 or newer installs the latest release; Python 3.10 gets an older one):
+
+```bash
+pip install -e ".[dashboard]"
+```
+
 The repository comes with a small synthetic log, `data/samples/demo.log`, so you can try everything without a real server. All the commands on this page use it.
 
 ## The two commands
@@ -62,6 +68,16 @@ $ loginsight detect data/samples/demo.log --min-severity high
 
 Finding attacks is not an error: the command exits with 0 whether or not it found any.
 
+## The dashboard
+
+```
+$ loginsight dashboard
+```
+
+starts the dashboard and prints its address (by default `http://127.0.0.1:8501`); open that in your browser, and press Ctrl+C to stop it. `--port N` chooses the port. It listens on your own computer only (`127.0.0.1`), never on the network, because a log can hold other people's addresses, and it does not send Streamlit's usage statistics. Without the dashboard extra the command says how to install it and exits with code 2.
+
+**Status:** the dashboard is just started. Today it shows a page with a file chooser and nothing else; the numbers, charts and detections are still to come.
+
 ## Output formats
 
 `--format` chooses what is printed:
@@ -103,7 +119,7 @@ The same log always gives byte-identical files: they hold no creation time and n
 | --- | --- |
 | 0 | success, including a log with no requests and a log with attacks in it |
 | 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), or the output folder cannot be written. One line on standard error, no traceback, and no report files |
-| 2 | wrong usage, such as an unknown option or `--top 0` |
+| 2 | wrong usage, such as an unknown option or `--top 0`, or `loginsight dashboard` without the dashboard extra installed |
 
 Lines that cannot be read are skipped and counted, and the counts are always shown. If more than 10 percent of the lines were skipped, a warning is printed on standard error, so it never ends up inside JSON output.
 
