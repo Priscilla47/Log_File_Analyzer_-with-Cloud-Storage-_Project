@@ -49,7 +49,9 @@ def write_to_storage(
     return written
 
 
-def write_report(report: Report, directory, formats: Iterable[str] = FORMATS) -> list[Path]:
+def write_report(
+    report: Report, directory: str | Path, formats: Iterable[str] = FORMATS
+) -> list[Path]:
     """Write the report into ``directory`` (created if missing) and return the paths written.
 
     The same as :func:`write_to_storage` on a :class:`LocalStorage` for that folder.

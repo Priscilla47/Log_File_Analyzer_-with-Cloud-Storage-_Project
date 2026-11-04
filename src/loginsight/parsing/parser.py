@@ -60,7 +60,7 @@ class LogParseError(ValueError):
     ``reason`` is one of ``no_match``, ``bad_timestamp``, ``bad_size`` or ``line_too_long``.
     """
 
-    def __init__(self, reason: str, line: str = ""):
+    def __init__(self, reason: str, line: str = "") -> None:
         self.reason = reason
         self.line = line
         super().__init__(f"{reason}: {line[:80]!r}")

@@ -70,7 +70,7 @@ def _png(figure: Figure) -> bytes:
     return buffer.getvalue()
 
 
-def _save(figure: Figure, output) -> Path:
+def _save(figure: Figure, output: str | Path) -> Path:
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = _png(figure)
@@ -148,7 +148,7 @@ def _status_figure(status_classes: Mapping[str, int]) -> Figure:
     return figure
 
 
-def plot_status_codes(status_classes: Mapping[str, int], output) -> Path:
+def plot_status_codes(status_classes: Mapping[str, int], output: str | Path) -> Path:
     """Bar chart of requests per status class (``"2xx"``, ``"4xx"`` and so on).
 
     The four main classes are always drawn. ``"1xx"`` and ``"other"`` appear only when they
@@ -190,7 +190,7 @@ def _traffic_figure(buckets: Sequence[TimeBucket]) -> Figure:
     return figure
 
 
-def plot_traffic(buckets: Sequence[TimeBucket], output) -> Path:
+def plot_traffic(buckets: Sequence[TimeBucket], output: str | Path) -> Path:
     """Line chart of requests per bucket, with the errors as a second line."""
     return _save(_traffic_figure(buckets), output)
 
@@ -214,7 +214,7 @@ def _top_paths_figure(top_paths: Sequence[tuple[str, int]]) -> Figure:
     return figure
 
 
-def plot_top_paths(top_paths: Sequence[tuple[str, int]], output) -> Path:
+def plot_top_paths(top_paths: Sequence[tuple[str, int]], output: str | Path) -> Path:
     """Horizontal bar chart of the most requested paths, busiest first (at the top)."""
     return _save(_top_paths_figure(top_paths), output)
 

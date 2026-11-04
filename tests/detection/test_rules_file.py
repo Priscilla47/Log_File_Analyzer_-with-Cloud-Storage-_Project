@@ -467,7 +467,7 @@ def test_the_default_rules_have_unique_valid_ids_and_descriptions():
 
 
 def test_the_default_file_is_found_through_the_package_resources():
-    data = resources.files("loginsight.detection").joinpath("rules", "default.toml")
+    data = resources.files("loginsight.detection").joinpath("rules").joinpath("default.toml")
     assert data.is_file()
     assert parse_rules(data.read_text(encoding="utf-8")).signatures == load_rules().signatures
 
