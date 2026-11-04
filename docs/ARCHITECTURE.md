@@ -26,7 +26,7 @@ All modules are in `src/loginsight/`.
 ### Analysis (`analysis/`)
 Pure functions that take log entries and return statistics. They do no file or network access, which makes them easy to test with small, known inputs.
 - `summary.py`: `summarize` gives totals, unique IPs, top IPs and paths, status classes and codes, methods, bytes and the error rate.
-- `timeseries.py`: `requests_per_bucket` (requests and errors per minute or hour, gaps included) and `busiest_window`.
+- `timeseries.py`: `requests_per_bucket` (requests and errors per minute, hour or day, gaps included unless the range is too wide) and `busiest_window`.
 
 ### Detection (`detection/`)
 Classifies suspicious activity with explainable rules. There are two kinds:
@@ -75,7 +75,7 @@ The JSON layout is `tool`, `source` (name and parse statistics), `summary`, `tra
 
 ### Interfaces
 - **CLI (`cli.py`, `__main__.py`):** `loginsight analyze` and `loginsight detect`, with a choice of output format. Exit code 0 is success, 1 a problem with a file, 2 wrong usage.
-- **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail. Started: `loginsight dashboard` serves a page where you choose a log and see the headline numbers (charts and detections are next). `app.py` is the only file that imports Streamlit and just hands it to `render.py`, which holds the logic of the page and is tested with a fake Streamlit; `data.py` turns an uploaded file into the numbers and messages (through `workflow.py`, so they equal the command line's); `launch.py` builds the command that serves it (this computer only, no usage statistics) and checks Streamlit is installed. Streamlit is an optional extra, so the rest of the tool works without it.
+- **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail. Started: `loginsight dashboard` serves a page where you choose a log and see the headline numbers and three charts: responses by status class, traffic over time (grouped by minute, hour or day) and the most requested paths (the detections table is next). The tables behind the charts are plain columns built in `data.py` from the report, so they equal its numbers. `app.py` is the only file that imports Streamlit and just hands it to `render.py`, which holds the logic of the page and is tested with a fake Streamlit; `data.py` turns an uploaded file into the numbers and messages (through `workflow.py`, so they equal the command line's); `launch.py` builds the command that serves it (this computer only, no usage statistics) and checks Streamlit is installed. Streamlit is an optional extra, so the rest of the tool works without it.
 
 ### Storage (`storage/`)
 A small interface for reading and writing named data.

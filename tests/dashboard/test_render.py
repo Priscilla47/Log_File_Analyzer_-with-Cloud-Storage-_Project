@@ -28,8 +28,9 @@ class Column:
 
 
 class FakeStreamlit:
-    def __init__(self, upload=None):
+    def __init__(self, upload=None, bucket="hour"):
         self.upload = upload
+        self.bucket = bucket
         self.calls = []
 
     def _record(self, name, *args, **kwargs):
@@ -57,6 +58,22 @@ class FakeStreamlit:
     def text(self, text):
         self.calls.append(("text", text))
 
+    def radio(self, label, options, **kwargs):
+        self.calls.append(("radio", label, tuple(options), kwargs.get("index"), kwargs.get("key")))
+        return self.bucket
+
+    def subheader(self, text):
+        self.calls.append(("subheader", text))
+
+    def caption(self, text):
+        self.calls.append(("caption", text))
+
+    def bar_chart(self, table, **kwargs):
+        self.calls.append(("bar_chart", table, kwargs))
+
+    def line_chart(self, table, **kwargs):
+        self.calls.append(("line_chart", table, kwargs))
+
     def columns(self, count):
         self.calls.append(("columns", count))
         return [Column(self.calls) for _ in range(count)]
@@ -68,8 +85,8 @@ class FakeStreamlit:
         return [call[1:] for call in self.calls if call[0] == name]
 
 
-def run(upload):
-    fake = FakeStreamlit(upload)
+def run(upload, bucket="hour"):
+    fake = FakeStreamlit(upload, bucket)
     show_page(fake)
     return fake
 
@@ -155,3 +172,91 @@ class TestProblems:
     def test_nothing_raises_for_any_kind_of_upload(self):
         for raw in (b"", b"\n", bytes(range(256)) * 50, b"\xef\xbb\xbf", GOOD.encode() * 100):
             run(Upload(raw))
+
+
+class TestCharts:
+    @pytest.fixture
+    def fake(self):
+        return run(Upload((GOOD * 3 + ERR).encode()))
+
+    def test_three_charts_each_after_its_own_title(self, fake):
+        names = fake.names()
+        positions = [i for i, n in enumerate(names) if n in ("bar_chart", "line_chart")]
+        assert [names[i] for i in positions] == ["bar_chart", "line_chart", "bar_chart"]
+        assert [names[i - 1] for i in positions] == ["subheader"] * 3  # no chart without a title
+        assert [t[0] for t in fake.of("subheader")] == [
+            "Responses by status class",
+            "Traffic over time",
+            "Most requested paths",
+        ]
+
+    def test_the_status_chart_draws_the_status_table(self, fake):
+        _, table, options = [c for c in fake.calls if c[0] == "bar_chart"][0]
+        assert table == {"Status class": ["2xx", "3xx", "4xx", "5xx"], "Requests": [3, 0, 0, 1]}
+        assert options["x"] == "Status class" and options["y"] == "Requests"
+        assert options["x_label"] == "Status class" and options["y_label"] == "Requests"
+        assert options["color"] == data.COLOUR_MAIN
+
+    def test_the_traffic_chart_draws_requests_and_errors_in_two_colours(self, fake):
+        _, table, options = [c for c in fake.calls if c[0] == "line_chart"][0]
+        assert list(table) == ["Time (UTC)", "Requests", "Errors"]
+        assert options["x"] == "Time (UTC)" and options["y"] == ["Requests", "Errors"]
+        assert options["color"] == [data.COLOUR_MAIN, data.COLOUR_ERRORS]
+        assert options["x_label"] == "Time (UTC)" and options["y_label"] == "Requests"
+
+    def test_the_paths_chart_is_horizontal_busiest_first(self, fake):
+        _, table, options = [c for c in fake.calls if c[0] == "bar_chart"][1]
+        assert table == {"Path": ["/a", "/b"], "Requests": [3, 1]}
+        assert options["horizontal"] is True and options["sort"] == "-Requests"
+        assert options["x"] == "Path" and options["y"] == "Requests"
+        assert options["x_label"] == "Requests" or options["y_label"] == "Requests"
+
+    def test_the_chart_data_equals_the_numbers_on_the_cards(self, fake):
+        status = [c for c in fake.calls if c[0] == "bar_chart"][0][1]
+        cards = {m[0]: m[1] for m in fake.of("column.metric")}
+        assert str(sum(status["Requests"])) == cards["Requests"]
+
+    def test_the_bucket_choice_comes_right_after_the_chooser_and_before_the_numbers(self, fake):
+        names = fake.names()
+        assert names.index("file_uploader") < names.index("radio") < names.index("columns")
+        ((label, options, index, key),) = fake.of("radio")
+        assert label == "Group the traffic by" and key == "bucket"
+        assert options == ("minute", "hour", "day") and options[index] == "hour"
+
+    @pytest.mark.parametrize("bucket", ["minute", "hour", "day"])
+    def test_the_chosen_bucket_decides_the_traffic_series(self, bucket):
+        rows = {"minute": 61, "hour": 2, "day": 1}
+        text = GOOD + GOOD.replace("10:00:01", "11:00:01")
+        traffic = [c for c in run(Upload(text.encode()), bucket).calls if c[0] == "line_chart"][0][
+            1
+        ]
+        assert len(traffic["Requests"]) == rows[bucket]
+
+    CHART_CALLS = {"bar_chart", "line_chart", "subheader"}
+
+    def test_no_charts_and_no_bucket_choice_before_a_file_is_chosen(self):
+        names = run(None).names()
+        assert not (self.CHART_CALLS | {"radio"}) & set(names)
+
+    def test_no_charts_for_a_file_that_cannot_be_read(self):
+        assert not self.CHART_CALLS & set(run(Upload(b"junk\n" * 3)).names())
+
+    def test_no_charts_for_an_empty_file_but_the_bucket_choice_is_still_offered(self):
+        names = run(Upload(b"")).names()
+        assert not self.CHART_CALLS & set(names) and "radio" in names
+
+    def test_a_wide_time_range_adds_the_note_under_the_traffic_chart(self):
+        text = GOOD + GOOD.replace("2026", "1970")
+        fake = run(Upload(text.encode()), "minute")
+        names = fake.names()
+        assert fake.of("caption") == [
+            ("Quiet periods are not listed because the log covers too long a time.",)
+        ]
+        assert (
+            names.index("line_chart")
+            < names.index("caption")
+            < names.index("subheader", names.index("line_chart"))
+        )
+
+    def test_a_normal_range_has_no_note(self, fake):
+        assert "caption" not in fake.names()

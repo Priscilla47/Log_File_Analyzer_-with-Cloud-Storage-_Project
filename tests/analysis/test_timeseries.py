@@ -220,7 +220,7 @@ def test_a_bucket_with_no_errors_has_an_error_rate_of_zero():
 # --- validation and limits ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bucket", ["day", "second", "", "Hour", "minutes", None, 60])
+@pytest.mark.parametrize("bucket", ["week", "second", "", "Hour", "minutes", None, 60])
 def test_an_unknown_bucket_size_is_rejected(bucket):
     with pytest.raises(ValueError):
         requests_per_bucket([make(at(0))], bucket)
@@ -228,7 +228,7 @@ def test_an_unknown_bucket_size_is_rejected(bucket):
 
 def test_an_unknown_bucket_size_is_rejected_even_for_empty_input():
     with pytest.raises(ValueError):
-        requests_per_bucket([], "day")
+        requests_per_bucket([], "week")
 
 
 def test_exactly_the_maximum_number_of_buckets_is_allowed():
@@ -522,10 +522,66 @@ class TestSparseSeries:
     def test_no_entries_and_a_bad_bucket_behave_as_before(self):
         assert requests_per_bucket([], "hour", fill_gaps=False) == []
         with pytest.raises(ValueError):
-            requests_per_bucket([make(at(0))], "day", fill_gaps=False)
+            requests_per_bucket([make(at(0))], "week", fill_gaps=False)
 
     def test_without_gaps_the_totals_equal_the_filled_totals(self):
         entries = [make(at(minutes=m * 7), 500 if m % 3 == 0 else 200) for m in range(40)]
         filled = requests_per_bucket(entries, "minute")
         sparse = requests_per_bucket(entries, "minute", fill_gaps=False)
         assert [b for b in filled if b.requests] == sparse
+
+
+# --- day buckets -------------------------------------------------------------------------
+
+
+class TestDayBuckets:
+    def test_the_known_bucket_sizes(self):
+        from loginsight.analysis.timeseries import BUCKET_SIZES
+
+        assert BUCKET_SIZES == {
+            "minute": timedelta(minutes=1),
+            "hour": timedelta(hours=1),
+            "day": timedelta(days=1),
+        }
+
+    def test_requests_are_counted_per_utc_day(self):
+        entries = [
+            make(datetime(2025, 6, 1, 0, 0, 0, tzinfo=UTC)),
+            make(datetime(2025, 6, 1, 23, 59, 59, tzinfo=UTC)),
+            make(datetime(2025, 6, 2, 0, 0, 0, tzinfo=UTC)),
+        ]
+        buckets = requests_per_bucket(entries, "day")
+        assert counts(buckets) == [
+            (datetime(2025, 6, 1, tzinfo=UTC), 2),
+            (datetime(2025, 6, 2, tzinfo=UTC), 1),
+        ]
+
+    def test_a_time_zone_is_converted_before_the_day_is_chosen(self):
+        plus_two = timezone(timedelta(hours=2))
+        late = datetime(2025, 6, 2, 1, 30, tzinfo=plus_two)  # 23:30 UTC on 1 June
+        (bucket,) = requests_per_bucket([make(late)], "day")
+        assert bucket.start == datetime(2025, 6, 1, tzinfo=UTC)
+
+    def test_quiet_days_are_listed_with_zero(self):
+        entries = [make(at(0)), make(at(days=3))]
+        assert [b.requests for b in requests_per_bucket(entries, "day")] == [1, 0, 0, 1]
+
+    def test_the_errors_are_counted_per_day(self):
+        entries = [make(at(0), 500), make(at(hours=1), 200), make(at(days=1), 404)]
+        assert [(b.requests, b.errors) for b in requests_per_bucket(entries, "day")] == [
+            (2, 1),
+            (1, 1),
+        ]
+
+    def test_fewer_buckets_for_a_longer_period_and_more_for_a_shorter_one(self):
+        entries = [make(at(minutes=m)) for m in range(0, 3 * 24 * 60, 37)]
+        lengths = [len(requests_per_bucket(entries, size)) for size in ("day", "hour", "minute")]
+        assert lengths == sorted(lengths) and lengths[0] == 4 and len(set(lengths)) == 3
+
+    def test_the_error_for_a_bad_bucket_lists_all_three(self):
+        with pytest.raises(ValueError, match="'day', 'hour', 'minute'"):
+            requests_per_bucket([make(at(0))], "week")
+
+    def test_without_gaps_a_day_is_still_only_listed_when_it_has_requests(self):
+        entries = [make(at(0)), make(at(days=40))]
+        assert len(requests_per_bucket(entries, "day", fill_gaps=False)) == 2

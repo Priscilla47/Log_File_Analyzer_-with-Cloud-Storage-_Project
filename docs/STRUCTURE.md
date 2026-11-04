@@ -1,6 +1,6 @@
 # Project structure
 
-This document explains how the repository is laid out and why. Parsing, analysis, detection, reporting, storage and the command line are built; the `dashboard/` package shows the headline numbers so far (see the roadmap in the README).
+This document explains how the repository is laid out and why. Parsing, analysis, detection, reporting, storage and the command line are built; the `dashboard/` package shows numbers and charts so far (see the roadmap in the README).
 
 ```
 .
@@ -10,7 +10,7 @@ This document explains how the repository is laid out and why. Parsing, analysis
 │   ├── detection/     classifies attacks with rules (the rules are in detection/rules/)
 │   ├── storage/       reads and writes files behind one interface (local now, cloud later)
 │   ├── reporting/     builds the report and writes JSON, Markdown, text and charts
-│   ├── dashboard/     the web interface: headline numbers so far (needs the optional Streamlit)
+│   ├── dashboard/     the web interface: numbers and charts so far (needs the optional Streamlit)
 │   ├── workflow.py    one analysis from the text of a log to a report, shared by the interfaces
 │   ├── cli.py         the command-line interface
 │   └── __main__.py    makes `python -m loginsight` work

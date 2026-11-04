@@ -78,7 +78,9 @@ starts the dashboard and prints its address (by default `http://127.0.0.1:8501`)
 
 Choose an access log on the page (up to 50 MB; for a bigger one use the command line) and it shows the headline numbers: requests, unique IPs, the error rate, the data sent and how many lines were skipped. They are the numbers of `loginsight analyze`, calculated by the same code. If more than 10 percent of the lines could not be read it warns you, and if none could be read it says so instead of showing zeros.
 
-**Status:** the numbers are in; the charts and the detections table are still to come.
+Below the numbers are three charts: responses by status class, traffic over time (requests and errors; choose to group it by minute, hour or day above the numbers; the command line offers minute and hour), and the most requested paths. The colours were picked to be told apart by people with the usual kinds of colour blindness. If the log covers too long a time to list every quiet period, the traffic chart shows only the periods with requests and says so.
+
+**Status:** the numbers and charts are in; the table of detections is still to come.
 
 ## Output formats
 

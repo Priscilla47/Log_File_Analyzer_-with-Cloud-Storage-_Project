@@ -107,3 +107,115 @@ def test_a_hostile_file_name_is_shown_as_plain_text_and_cannot_inject_markup():
 def test_a_name_with_folders_is_reduced_to_the_file_name():
     app = upload("../../etc/access.log", (SAMPLES / "clean.log").read_bytes())
     assert [t.value for t in app.text][0] == "File: access.log"
+
+
+# --- the charts, as the real Streamlit draws them -----------------------------------------
+
+pa = pytest.importorskip("pyarrow")
+
+OKABE_ITO = {"#0072B2", "#D55E00", "#009E73", "#E69F00", "#56B4E9", "#CC79A7", "#F0E442"}
+
+
+def vega_charts(app):
+    return [
+        e.proto
+        for e in app.main
+        if type(e).__name__ == "UnknownElement" and hasattr(e.proto, "spec")
+    ]
+
+
+def rows_of(chart):
+    blob = chart.datasets[0].data.data if len(chart.datasets) else chart.data.data
+    return pa.ipc.open_stream(blob).read_all()
+
+
+def spec_of(chart):
+    return json.loads(chart.spec)
+
+
+@pytest.fixture(scope="module")
+def demo_page():
+    return upload("demo.log", (SAMPLES / "demo.log").read_bytes())
+
+
+def test_three_charts_are_drawn_each_under_a_title(demo_page):
+    assert not demo_page.exception
+    assert len(vega_charts(demo_page)) == 3
+    assert [s.value for s in demo_page.subheader] == [
+        "Responses by status class",
+        "Traffic over time",
+        "Most requested paths",
+    ]
+
+
+def test_the_status_chart_plots_the_status_classes_of_the_report(demo_page, capsys):
+    main(["analyze", str(SAMPLES / "demo.log"), "--format", "json"])
+    classes = json.loads(capsys.readouterr().out)["summary"]["status_classes"]
+    chart = vega_charts(demo_page)[0]
+    table = rows_of(chart).to_pydict()
+    assert dict(zip(table["Status class"], table["Requests"], strict=True)) == {
+        name: classes[name] for name in ("2xx", "3xx", "4xx", "5xx")
+    }
+    spec = spec_of(chart)
+    assert spec["mark"]["type"] == "bar"
+    assert spec["encoding"]["x"]["title"] == "Status class"
+    assert spec["encoding"]["y"]["title"] == "Requests"
+
+
+def test_the_traffic_chart_has_two_lines_in_colours_people_can_tell_apart(demo_page):
+    spec = spec_of(vega_charts(demo_page)[1])
+    layer = spec["layer"][0]
+    assert layer["mark"]["type"] == "line"
+    scale = layer["encoding"]["color"]["scale"]
+    assert scale["domain"] == ["Requests", "Errors"]
+    assert scale["range"] == ["#0072B2", "#D55E00"] and set(scale["range"]) <= OKABE_ITO
+
+
+def test_the_paths_chart_is_horizontal_and_lists_the_reports_busiest_paths(demo_page, capsys):
+    main(["analyze", str(SAMPLES / "demo.log"), "--format", "json"])
+    top = json.loads(capsys.readouterr().out)["summary"]["top_paths"]
+    chart = vega_charts(demo_page)[2]
+    table = rows_of(chart).to_pydict()
+    assert list(zip(table["Path"], table["Requests"], strict=True)) == [
+        (p["path"], p["requests"]) for p in top
+    ]
+    encoding = spec_of(chart)["encoding"]
+    assert encoding["y"]["field"] == "Path" and encoding["x"]["field"] == "Requests"
+
+
+def test_the_bar_colours_are_from_the_safe_palette(demo_page):
+    for chart in (vega_charts(demo_page)[0], vega_charts(demo_page)[2]):
+        assert spec_of(chart)["encoding"]["color"]["value"] in OKABE_ITO
+
+
+def test_choosing_a_shorter_period_gives_more_points_and_a_longer_one_fewer():
+    app = upload("demo.log", (SAMPLES / "demo.log").read_bytes())
+    sizes = {}
+    for bucket in ("minute", "hour", "day"):
+        app.radio[0].set_value(bucket).run()
+        assert not app.exception
+        sizes[bucket] = rows_of(vega_charts(app)[1]).num_rows
+    assert sizes["minute"] > sizes["hour"] >= sizes["day"] >= 2  # two lines per period
+    assert sizes["minute"] == 2 * 11  # the demo log spans eleven minutes
+
+
+def test_the_chosen_period_does_not_change_the_numbers_on_the_cards():
+    app = upload("demo.log", (SAMPLES / "demo.log").read_bytes())
+    before = shown(app)
+    app.radio[0].set_value("minute").run()
+    assert shown(app) == before
+
+
+def test_no_charts_for_a_bad_file_or_an_empty_one():
+    assert vega_charts(upload("notes.txt", b"just some notes\n" * 3)) == []
+    assert vega_charts(upload("empty.log", b"")) == []
+
+
+def test_a_wide_time_range_still_draws_with_a_note():
+    old = (SAMPLES / "demo.log").read_bytes().replace(b"/Jan/2026", b"/Jan/1970", 1)
+    app = upload("odd.log", old)
+    app.radio[0].set_value("minute").run()
+    assert not app.exception and len(vega_charts(app)) == 3
+    assert [c.value for c in app.caption] == [
+        "Quiet periods are not listed because the log covers too long a time."
+    ]
