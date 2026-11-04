@@ -2,6 +2,7 @@
 
 ## Summary
 
+- Log format: apache
 - Lines read: 5 (4 parsed, 1 skipped)
 - Requests: 4
 - Unique IP addresses: 2

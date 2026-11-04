@@ -18,6 +18,12 @@ This installs the `loginsight` command. Check it:
 $ loginsight --version
 ```
 
+The dashboard is optional and needs Streamlit (Python 3.11 or newer installs the latest release; Python 3.10 gets an older one):
+
+```bash
+pip install -e ".[dashboard]"
+```
+
 The repository comes with a small synthetic log, `data/samples/demo.log`, so you can try everything without a real server. All the commands on this page use it.
 
 ## The two commands
@@ -28,6 +34,8 @@ loginsight detect  FILE [--format text|json|md] [--output DIR] [--min-severity l
 ```
 
 `python -m loginsight ...` does the same as `loginsight ...`.
+
+The tool works out whether the log was written by Apache or by Nginx and says so in every report (`Format:` in the text view, `Log format` in the Markdown report, `source.format` in the JSON). A log with no special characters in it reads the same either way and is reported as `apache`.
 
 ### analyze: what happened
 
@@ -59,6 +67,18 @@ $ loginsight detect data/samples/demo.log --min-severity high
 ```
 
 Finding attacks is not an error: the command exits with 0 whether or not it found any.
+
+## The dashboard
+
+```
+$ loginsight dashboard
+```
+
+starts the dashboard and prints its address (by default `http://127.0.0.1:8501`); open that in your browser, and press Ctrl+C to stop it. `--port N` chooses the port. It listens on your own computer only (`127.0.0.1`), never on the network, because a log can hold other people's addresses, and it does not send Streamlit's usage statistics. Without the dashboard extra the command says how to install it and exits with code 2.
+
+Choose an access log on the page (up to 50 MB; for a bigger one use the command line) and it shows the headline numbers: requests, unique IPs, the error rate, the data sent and how many lines were skipped. They are the numbers of `loginsight analyze`, calculated by the same code. If more than 10 percent of the lines could not be read it warns you, and if none could be read it says so instead of showing zeros.
+
+**Status:** the numbers are in; the charts and the detections table are still to come.
 
 ## Output formats
 
@@ -101,7 +121,7 @@ The same log always gives byte-identical files: they hold no creation time and n
 | --- | --- |
 | 0 | success, including a log with no requests and a log with attacks in it |
 | 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), or the output folder cannot be written. One line on standard error, no traceback, and no report files |
-| 2 | wrong usage, such as an unknown option or `--top 0` |
+| 2 | wrong usage, such as an unknown option or `--top 0`, or `loginsight dashboard` without the dashboard extra installed |
 
 Lines that cannot be read are skipped and counted, and the counts are always shown. If more than 10 percent of the lines were skipped, a warning is printed on standard error, so it never ends up inside JSON output.
 
