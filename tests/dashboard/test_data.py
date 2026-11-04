@@ -1,6 +1,5 @@
 """The helpers behind the dashboard import and work without Streamlit."""
 
-import importlib
 import subprocess
 import sys
 import textwrap
@@ -43,8 +42,24 @@ def test_the_helpers_import_when_streamlit_is_missing():
     assert done.stdout.strip() == "False"
 
 
-def test_the_module_can_be_reloaded():
-    assert importlib.reload(data).APP_TITLE == "LogInsight"
+def test_only_the_page_file_imports_streamlit():
+    import ast
+    from pathlib import Path
+
+    from loginsight.dashboard.launch import APP_FILE
+
+    for path in sorted(Path(APP_FILE).parent.glob("*.py")):
+        imported = {
+            alias.name.split(".")[0]
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        } | {
+            node.module.split(".")[0]
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+        assert ("streamlit" in imported) == (path.name == "app.py"), path.name
 
 
 def test_the_page_file_holds_layout_only_and_no_logic():

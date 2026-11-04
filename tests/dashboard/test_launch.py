@@ -36,6 +36,14 @@ class TestStreamlitCommand:
         command = launch.streamlit_command(8501)
         assert command[command.index("--server.headless") + 1] == "true"
 
+    def test_streamlit_itself_enforces_the_same_upload_limit(self):
+        # Streamlit's own default is 200 MB: without this the page would accept more than
+        # data.UPLOAD_LIMIT_MB and only refuse after the whole file had arrived
+        from loginsight.dashboard.data import UPLOAD_LIMIT_MB
+
+        command = launch.streamlit_command(8501)
+        assert command[command.index("--server.maxUploadSize") + 1] == str(UPLOAD_LIMIT_MB)
+
     def test_the_address_of_the_page(self):
         assert launch.dashboard_url(8600) == "http://127.0.0.1:8600"
 

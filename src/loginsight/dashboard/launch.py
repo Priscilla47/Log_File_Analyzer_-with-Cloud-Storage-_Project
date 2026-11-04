@@ -8,6 +8,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from loginsight.dashboard.data import UPLOAD_LIMIT_MB
+
 DEFAULT_PORT = 8501
 APP_FILE = Path(__file__).with_name("app.py")
 MIN_PORT, MAX_PORT = 1, 65535
@@ -36,8 +38,9 @@ def streamlit_command(port: int) -> list[str]:
     log can hold other people's addresses, so it is never offered to the network), does not
     send Streamlit's usage statistics, and runs headless: without that Streamlit asks for an
     e-mail address on its first start and serves nothing until it is answered. Headless also
-    means no browser is opened, so the caller shows the address. Raises :class:`ValueError`
-    for a port outside 1 to 65535.
+    means no browser is opened, so the caller shows the address. Uploads are limited to
+    ``UPLOAD_LIMIT_MB`` by Streamlit itself, so a bigger file is refused before it arrives.
+    Raises :class:`ValueError` for a port outside 1 to 65535.
     """
     _check_port(port)
     return [
@@ -52,6 +55,8 @@ def streamlit_command(port: int) -> list[str]:
         "127.0.0.1",
         "--server.headless",
         "true",
+        "--server.maxUploadSize",
+        str(UPLOAD_LIMIT_MB),
         "--browser.gatherUsageStats",
         "false",
     ]

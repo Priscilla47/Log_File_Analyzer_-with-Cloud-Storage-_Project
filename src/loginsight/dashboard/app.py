@@ -1,10 +1,7 @@
-"""The dashboard page. Only layout lives here: what to show comes from ``data.py``."""
+"""The dashboard page, as Streamlit runs it. Everything it does is in ``render.show_page``."""
 
 import streamlit as st
 
-from loginsight.dashboard.data import APP_TITLE, EMPTY_MESSAGE
+from loginsight.dashboard.render import show_page
 
-st.set_page_config(page_title=APP_TITLE, layout="wide")
-st.title(APP_TITLE)
-st.file_uploader("Access log", key="log_file")
-st.info(EMPTY_MESSAGE)
+show_page(st)

@@ -76,7 +76,9 @@ $ loginsight dashboard
 
 starts the dashboard and prints its address (by default `http://127.0.0.1:8501`); open that in your browser, and press Ctrl+C to stop it. `--port N` chooses the port. It listens on your own computer only (`127.0.0.1`), never on the network, because a log can hold other people's addresses, and it does not send Streamlit's usage statistics. Without the dashboard extra the command says how to install it and exits with code 2.
 
-**Status:** the dashboard is just started. Today it shows a page with a file chooser and nothing else; the numbers, charts and detections are still to come.
+Choose an access log on the page (up to 50 MB; for a bigger one use the command line) and it shows the headline numbers: requests, unique IPs, the error rate, the data sent and how many lines were skipped. They are the numbers of `loginsight analyze`, calculated by the same code. If more than 10 percent of the lines could not be read it warns you, and if none could be read it says so instead of showing zeros.
+
+**Status:** the numbers are in; the charts and the detections table are still to come.
 
 ## Output formats
 
