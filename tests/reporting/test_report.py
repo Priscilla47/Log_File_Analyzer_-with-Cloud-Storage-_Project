@@ -111,7 +111,7 @@ class TestBuildReport:
         report_for(detections=given)
         assert given == [low, high]
 
-    @pytest.mark.parametrize("bucket", ["day", "", "Hour", None])
+    @pytest.mark.parametrize("bucket", ["week", "", "Hour", None])
     def test_bad_bucket_is_rejected_even_without_entries(self, bucket):
         with pytest.raises(ValueError, match="bucket"):
             report_for(bucket=bucket)
@@ -140,7 +140,7 @@ class TestRenderJson:
         assert list(data) == KEYS
         assert list(data["tool"]) == ["name", "version"]
         assert data["tool"] == {"name": "loginsight", "version": __version__}
-        assert list(data["source"]) == ["name", "parse"]
+        assert list(data["source"]) == ["name", "format", "parse"]
         assert list(data["traffic"]) == ["bucket", "gaps_filled", "buckets"]
 
     def test_parse_statistics(self, tiny):

@@ -1,6 +1,6 @@
 # Project structure
 
-This document explains how the repository is laid out and why. Parsing, analysis, detection, reporting, storage and the command line are built; `dashboard/` is an empty package waiting for its turn (see the roadmap in the README).
+This document explains how the repository is laid out and why. Parsing, analysis, detection, reporting, storage and the command line are built; the `dashboard/` package shows numbers and charts so far (see the roadmap in the README).
 
 ```
 .
@@ -10,7 +10,8 @@ This document explains how the repository is laid out and why. Parsing, analysis
 │   ├── detection/     classifies attacks with rules (the rules are in detection/rules/)
 │   ├── storage/       reads and writes files behind one interface (local now, cloud later)
 │   ├── reporting/     builds the report and writes JSON, Markdown, text and charts
-│   ├── dashboard/     the web interface: not built yet
+│   ├── dashboard/     the web interface: numbers and charts so far (needs the optional Streamlit)
+│   ├── workflow.py    one analysis from the text of a log to a report, shared by the interfaces
 │   ├── cli.py         the command-line interface
 │   └── __main__.py    makes `python -m loginsight` work
 ├── tests/             automated tests, in folders that mirror the packages
@@ -39,7 +40,7 @@ Each folder has a single job and a clear input and output:
 Keeping them separate means each can be understood, tested and changed on its own. For example, adding a new attack rule touches only `detection`.
 
 ### The command line and the dashboard are thin
-`cli.py` and (later) `dashboard/` contain no analysis logic. They only collect input, call the other packages, and show the result. That way both interfaces always give the same answers, and the logic that matters is tested once, in the core.
+`cli.py` and `dashboard/` contain no analysis logic. They only collect input, call the other packages, and show the result. That way both interfaces always give the same answers, and the logic that matters is tested once, in the core.
 
 ### Storage is its own package
 Anything that touches files or, later, cloud buckets goes through `storage/`: the command line reads the log and writes the report files through it, and the rest of the code never opens a file. This is what makes it possible to add cloud storage later without rewriting the analysis, and it lets tests run entirely offline.
