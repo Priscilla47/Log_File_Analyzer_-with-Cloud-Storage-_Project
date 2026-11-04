@@ -3,8 +3,9 @@
 # A rule is data, so adding one means adding an entry here and a matching test case. Patterns
 # are regular expressions, matched ignoring case against the decoded path and query string of
 # each request (percent-encoding removed up to three times, "+" turned into a space, runs of
-# whitespace collapsed to one space, everything lower-cased). Use triple single quotes for a
-# pattern so backslashes are kept as written.
+# whitespace collapsed to one space, everything lower-cased). A rule can read another part of
+# the request instead, see "field" below; the text is decoded the same way. Use triple single
+# quotes for a pattern so backslashes are kept as written.
 #
 # Fields of a [[signature]] rule (all are required):
 #   id           lower-case letters, digits and single hyphens, unique in this file
@@ -12,6 +13,12 @@
 #   severity     low, medium, high or critical
 #   description  one line saying what the rule catches
 #   pattern      the regular expression (at most 500 characters)
+#
+# Optional:
+#   field        what the pattern is matched against: "target" (the default: the path and
+#                query string), "user_agent" or "referer". A request without that header is
+#                never matched. User agents and referers can be faked, so rules on them
+#                should say what they catch and no more.
 #
 # Rules are written from the attack technique, and each one is kept narrow so ordinary traffic
 # that only looks similar ("select shoes", "union jack", "report.pdf") is left alone. Keep
@@ -165,6 +172,14 @@ label = "command_injection"
 severity = "critical"
 description = "A JNDI lookup such as ${jndi:ldap://...}, also split with nested lookups, that makes a vulnerable Java logger fetch and run remote code (Log4Shell)"
 pattern = '''\$\{\s*jndi\s*:|\$\{(?:[^}${]|\$\{[^}]{0,30}\}){1,40}?di\s*:|\$\{(?:\$\{[^}]{0,30}\}){3,5}\s*:'''
+
+[[signature]]
+id = "cmdi-shellshock"
+label = "command_injection"
+severity = "critical"
+description = "A bash function definition in the user agent, '() { :;};' and then a command, which runs it on a vulnerable CGI server (Shellshock)"
+pattern = '''\(\)\s*\{[^}]{0,80}\}.{0,80}?;'''
+field = "user_agent"
 
 # ---------------------------------------------------------------------------------------------
 # Probes for sensitive files and admin pages (sensitive_file_probe)

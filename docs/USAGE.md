@@ -122,7 +122,7 @@ Each detection answers: what, how bad, who, when and why.
 
 A detection means a request matched a rule, not that an attack succeeded. Check the status code of the request in your log: a `404` or `403` answer to a probe usually means it failed.
 
-The rules look at the path and query string of a request only, after undoing URL encoding. They do not look at request bodies, headers or cookies, which an access log does not hold.
+Almost all rules look at the path and query string of a request, after undoing URL encoding. One rule (Shellshock) looks at the user agent, and a rule file can choose the user agent or the referer with a `field` key. Request bodies, cookies and other headers are not in an access log, so no rule can see them.
 
 ## Making your own sample data
 

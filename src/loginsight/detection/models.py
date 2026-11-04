@@ -4,8 +4,9 @@ Everything here is a plain immutable value with no file or network access, so th
 reports and the interfaces can all share the same definitions.
 """
 
+import dataclasses
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
 
@@ -22,6 +23,10 @@ BEHAVIOURAL_LABELS = ("brute_force", "scanner")
 LABELS = SIGNATURE_LABELS + BEHAVIOURAL_LABELS
 
 # Evidence quoted from a log line is cut to this many characters.
+# The part of a log entry a signature rule reads: the request path with its query string, the
+# user agent, or the referer.
+FIELDS = ("target", "user_agent", "referer")
+
 MAX_EVIDENCE_LENGTH = 200
 
 
@@ -132,7 +137,10 @@ class Detection:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SignatureRule:
-    """A rule that flags a request whose path and query match a regular expression.
+    """A rule that flags a request when one field of it matches a regular expression.
+
+    ``field`` is the part of the request that is read (see :data:`FIELDS`): the path with its
+    query string by default, or the user agent or the referer.
 
     The pattern is compiled, ignoring case, when the rule is created, so a broken pattern
     fails at once with an error naming the rule instead of failing later in the middle of an
@@ -144,7 +152,8 @@ class SignatureRule:
     severity: Severity
     description: str
     pattern: str
-    compiled: re.Pattern = field(init=False, repr=False, compare=False)
+    field: str = "target"
+    compiled: re.Pattern = dataclasses.field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id:
@@ -152,6 +161,10 @@ class SignatureRule:
         owner = f"rule {self.id!r}"
         _check_label(self.label, owner)
         _check_severity(self.severity, owner)
+        if self.field not in FIELDS:
+            raise ValueError(
+                f"{owner}: unknown field {self.field!r}; expected one of: {', '.join(FIELDS)}"
+            )
         if not self.pattern:
             raise ValueError(f"{owner}: the pattern is empty, so it would match every request")
         try:

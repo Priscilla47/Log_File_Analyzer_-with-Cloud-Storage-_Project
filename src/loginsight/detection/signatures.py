@@ -49,6 +49,25 @@ def normalise(target: str) -> str:
     return _WHITESPACE.sub(" ", text).lower()
 
 
+_FIELD_NAMES = {"user_agent": "user agent", "referer": "referer"}
+
+
+def _value(entry: LogEntry, field: str) -> str | None:
+    """The text of ``entry`` that a rule reading ``field`` looks at, or ``None`` if it has none."""
+    if field == "user_agent":
+        return entry.user_agent
+    if field == "referer":
+        return entry.referer
+    return entry.target
+
+
+def _evidence(entry: LogEntry, field: str, value: str) -> str:
+    """The request line for a rule on the target; the field's name and value for any other."""
+    if field == "target":
+        return shorten_evidence(entry.request)
+    return shorten_evidence(f"{_FIELD_NAMES[field]}: {value}")
+
+
 def detect_signatures(
     entries: Iterable[LogEntry], rules: RuleSet | Iterable[SignatureRule]
 ) -> list[Detection]:
@@ -61,20 +80,25 @@ def detect_signatures(
     signatures = rules.signatures if isinstance(rules, RuleSet) else tuple(rules)
     found = []
     for index, entry in enumerate(entries):
-        text = normalise(entry.target)
+        values = {}  # field -> (text as logged, normalised text), computed when a rule needs it
         for rule in signatures:
-            if rule.compiled.search(text):
-                found.append(
-                    Detection(
-                        rule_id=rule.id,
-                        label=rule.label,
-                        severity=rule.severity,
-                        ip=entry.ip,
-                        time=entry.time,
-                        first_index=index,
-                        last_index=index,
-                        count=1,
-                        evidence=shorten_evidence(entry.request),
-                    )
+            if rule.field not in values:
+                raw = _value(entry, rule.field)
+                values[rule.field] = None if raw is None else (raw, normalise(raw))
+            value = values[rule.field]
+            if value is None or not rule.compiled.search(value[1]):
+                continue
+            found.append(
+                Detection(
+                    rule_id=rule.id,
+                    label=rule.label,
+                    severity=rule.severity,
+                    ip=entry.ip,
+                    time=entry.time,
+                    first_index=index,
+                    last_index=index,
+                    count=1,
+                    evidence=_evidence(entry, rule.field, value[0]),
                 )
+            )
     return found
