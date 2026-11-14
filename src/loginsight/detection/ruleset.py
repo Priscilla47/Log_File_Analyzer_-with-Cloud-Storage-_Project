@@ -14,9 +14,11 @@ from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
-if sys.version_info >= (3, 11):  # the standard library reads TOML from Python 3.11
+# The standard library reads TOML from Python 3.11. Which branch runs depends on the Python
+# version, so neither counts as missed in the coverage of the other.
+if sys.version_info >= (3, 11):  # pragma: no cover
     import tomllib
-else:  # pragma: no cover - only on Python 3.10
+else:  # pragma: no cover
     import tomli as tomllib
 
 from loginsight.detection.models import BEHAVIOURAL_LABELS, LABELS, Severity, SignatureRule

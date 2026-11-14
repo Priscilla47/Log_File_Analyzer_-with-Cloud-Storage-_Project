@@ -601,13 +601,24 @@ class TestExitOfTheParser:
         ("raised", "expected"),
         [(0, 0), (2, 2), (None, 0), ("a usage message", 2)],
     )
-    def test_the_status_of_an_exit(self, monkeypatch, raised, expected):
+    def test_the_status_of_an_exit(self, monkeypatch, capsys, raised, expected):
         class Parser:
             def parse_args(self, argv):
                 raise SystemExit(raised)
 
         monkeypatch.setattr(cli, "build_parser", lambda: Parser())
         assert main([]) == expected
+        capsys.readouterr()
+
+    def test_a_message_is_printed_not_lost(self, monkeypatch, capsys):
+        class Parser:
+            def parse_args(self, argv):
+                raise SystemExit("a usage message")
+
+        monkeypatch.setattr(cli, "build_parser", lambda: Parser())
+        assert main([]) == 2
+        captured = capsys.readouterr()
+        assert captured.err == "loginsight: a usage message\n" and captured.out == ""
 
     def test_help_and_version_still_exit_zero_and_a_bad_option_two(self, capsys):
         assert main(["--help"]) == 0
