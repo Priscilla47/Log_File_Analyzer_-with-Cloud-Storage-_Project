@@ -20,6 +20,7 @@ from loginsight.dashboard.launch import (
     MAX_PORT,
     MIN_PORT,
     dashboard_url,
+    port_is_free,
     streamlit_available,
     streamlit_command,
 )
@@ -37,6 +38,14 @@ EXIT_OK = 0
 EXIT_PROBLEM = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPTED = 130
+
+# Signals that end the dashboard like Ctrl+C does: a supervisor stopping the service (SIGTERM)
+# or a closed terminal (SIGHUP, which does not exist on Windows).
+STOP_SIGNALS = tuple(
+    getattr(signal, name) for name in ("SIGTERM", "SIGHUP") if hasattr(signal, name)
+)
+# How long Streamlit gets to finish after it is told to stop, before it is killed.
+STOP_WAIT_SECONDS = 10
 
 
 def _at_least_one(text: str) -> int:
@@ -178,8 +187,21 @@ def _load_rules(name: str | None) -> RuleSet:
     return parse_rules(_read_file(name), source=name)
 
 
+class _Terminated(Exception):
+    """The command was asked to end by a signal (see :data:`STOP_SIGNALS`), not by Ctrl+C."""
+
+
+def _end(process: subprocess.Popen) -> None:
+    """Wait a moment for ``process`` to finish, then kill it."""
+    try:
+        process.wait(timeout=STOP_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def _dashboard(args: argparse.Namespace) -> int:
-    """Start the Streamlit app, or say how to install it."""
+    """Start the Streamlit app, or say how to install it or why it cannot start."""
     if not streamlit_available():
         print(
             f"{PROG}: error: the dashboard needs Streamlit, which is not installed. "
@@ -187,6 +209,8 @@ def _dashboard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return EXIT_USAGE
+    if not port_is_free(args.port):
+        return _fail(f"port {args.port} is already in use; choose another with --port")
     try:
         process = subprocess.Popen(streamlit_command(args.port))
     except OSError as error:
@@ -199,20 +223,21 @@ def _dashboard(args: argparse.Namespace) -> int:
     )
 
     def stop(number: int, frame: object) -> None:
-        raise KeyboardInterrupt  # being asked to terminate ends the dashboard like Ctrl+C
+        raise _Terminated
 
-    previous = signal.signal(signal.SIGTERM, stop)
+    previous = {number: signal.signal(number, stop) for number in STOP_SIGNALS}
     try:
         return process.wait()
     except KeyboardInterrupt:  # Ctrl+C is how the dashboard is stopped, not a failure
-        try:  # the terminal sent it to Streamlit too; give it a moment to finish
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+        _end(process)  # the terminal sent it to Streamlit too; give it a moment to finish
+        return EXIT_OK
+    except _Terminated:  # nobody told Streamlit, so tell it to stop
+        process.terminate()
+        _end(process)
         return EXIT_OK
     finally:
-        signal.signal(signal.SIGTERM, previous)
+        for number, handler in previous.items():
+            signal.signal(number, handler)
         if process.poll() is None:  # whatever ended this command, the server must not stay behind
             process.terminate()
 
