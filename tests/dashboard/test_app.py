@@ -183,6 +183,20 @@ def test_the_paths_chart_is_horizontal_and_lists_the_reports_busiest_paths(demo_
     assert encoding["y"]["field"] == "Path" and encoding["x"]["field"] == "Requests"
 
 
+def axis_titles(chart):
+    spec = spec_of(chart)
+    encoding = spec["encoding"] if "encoding" in spec else spec["layer"][0]["encoding"]
+    return encoding["x"]["title"], encoding["y"]["title"]
+
+
+def test_every_chart_has_labelled_axes_with_the_titles_on_the_right_axis(demo_page):
+    status, traffic, paths = vega_charts(demo_page)
+    assert axis_titles(status) == ("Status class", "Requests")
+    assert axis_titles(traffic) == ("Time (UTC)", "Requests")
+    # the paths are on the vertical axis of the sideways bars, the counts along the bottom
+    assert axis_titles(paths) == ("Requests", "Path")
+
+
 def test_the_bar_colours_are_from_the_safe_palette(demo_page):
     for chart in (vega_charts(demo_page)[0], vega_charts(demo_page)[2]):
         assert spec_of(chart)["encoding"]["color"]["value"] in OKABE_ITO
