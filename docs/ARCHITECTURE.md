@@ -68,7 +68,7 @@ That number comes from synthetic logs made by a simple generator. It shows that 
 - `charts.py`: the three PNG charts (status classes, traffic, top paths), drawn with matplotlib's object API so there is no global state.
 - `text.py`: the plain-text views the command line prints. Control characters from the log are shown as visible escapes so a log line cannot send commands to a terminal.
 
-The JSON layout is `tool`, `source` (name and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
+The JSON layout is `tool`, `source` (name, log format and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
 
 ### One analysis for every interface (`workflow.py`)
 `analyze_text(text, source_name, ...)` does the whole job from the text of a log to a `Report`: it detects the format, parses, refuses a log where no line can be read (`NothingReadError`), collects the "many lines skipped" warning, applies the rules and builds the report. The command line and the dashboard both call it, so they cannot disagree about a number.
