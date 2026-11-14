@@ -1,6 +1,6 @@
 # Architecture
 
-This describes LogInsight as it is built today. The dashboard is only started (a page with a file chooser) and is marked **planned**. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
+This describes LogInsight as it is built today. The dashboard is still being built: its section below says what exists and stays marked **planned** until it is complete. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
 
 ## Overview
 
@@ -12,7 +12,7 @@ Data flows in one direction, from a raw log file to a report:
                                         └──► detection ──► detections ──┘
 ```
 
-The command line drives this pipeline and contains no analysis logic of its own. The dashboard (**planned**) will drive the same pipeline through `workflow.py`. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
+The command line drives this pipeline and contains no analysis logic of its own. The dashboard drives the same pipeline through `workflow.py`. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
 
 ## Components
 

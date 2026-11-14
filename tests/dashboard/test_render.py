@@ -106,7 +106,13 @@ class TestWithAGoodLog:
         assert [m[1] for m in metrics] == ["2", "2", "50.0%", "1.5 KiB", "0"]
 
     def test_each_card_carries_its_explanation(self, fake):
-        assert all(len(m[2]) > 10 for m in fake.of("column.metric"))
+        assert [m[2] for m in fake.of("column.metric")] == [
+            "Lines of the log that were read as a request.",
+            "Different client addresses that sent a request.",
+            "Share of requests answered with an error (4xx and 5xx).",
+            "Total size of the responses, as the server logged it.",
+            "Lines that could not be read, out of 2 lines in the file.",
+        ]
 
     def test_the_facts_are_shown_as_plain_text_not_markdown(self, fake):
         assert [t[0] for t in fake.of("text")] == [
@@ -147,10 +153,17 @@ class TestProblems:
         assert fake.of("info") == [("The file has no requests in it.",)]
         assert fake.of("column.metric")[0][:2] == ("Requests", "0")
 
-    def test_a_hostile_name_is_not_interpreted(self):
-        fake = run(Upload(GOOD.encode(), "**bold** [x](http://evil)\x1b.log"))
-        assert ("text", "File: **bold** [x](http://evil)\x1b.log") not in fake.calls  # name reduced
+    def test_a_hostile_name_is_shown_as_escaped_plain_text_and_nowhere_else(self):
+        fake = run(Upload(GOOD.encode(), "**bold** [x](evil)\x1b[2J<b>.log"))
+        assert ("text", "File: **bold** [x](evil)\\x1b[2J<b>.log") in fake.calls
         assert all("evil" not in str(call) for call in fake.calls if call[0] != "text")
+        assert not {"markdown", "write", "html"} & set(fake.names())
+
+    def test_a_newline_in_the_name_cannot_forge_another_line_of_facts(self):
+        fake = run(Upload(GOOD.encode(), "a\nFormat: nginx.log"))
+        texts = [t[0] for t in fake.of("text")]
+        assert texts[0] == "File: a\\x0aFormat: nginx.log"
+        assert [t for t in texts if t.startswith("Format:")] == ["Format: apache"]
 
     def test_nothing_raises_for_any_kind_of_upload(self):
         for raw in (b"", b"\n", bytes(range(256)) * 50, b"\xef\xbb\xbf", GOOD.encode() * 100):
