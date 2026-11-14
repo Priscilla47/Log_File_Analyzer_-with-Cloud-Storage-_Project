@@ -5,6 +5,7 @@ instead of failing with an import error.
 """
 
 import importlib.util
+import socket
 import sys
 from pathlib import Path
 
@@ -22,6 +23,22 @@ def dashboard_url(port: int) -> str:
     """The address the dashboard is served at on ``port`` (:class:`ValueError` for a bad port)."""
     _check_port(port)
     return f"http://127.0.0.1:{port}"
+
+
+def port_is_free(port: int) -> bool:
+    """Whether nothing is listening on ``port`` of this computer, so the dashboard can use it.
+
+    Streamlit would only say so itself after the command had printed the address, and then
+    exit with a status that means something else. Raises :class:`ValueError` for a bad port.
+    """
+    _check_port(port)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as the server does
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
 
 
 def _check_port(port: int) -> None:

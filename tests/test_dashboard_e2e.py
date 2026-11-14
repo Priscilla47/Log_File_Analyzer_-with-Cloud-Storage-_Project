@@ -68,19 +68,47 @@ def test_it_starts_without_asking_anything_serves_a_page_and_stops_on_ctrl_c(das
     assert not (home / ".streamlit").exists()  # no first-run questions answered or saved
 
 
-def test_being_terminated_does_not_leave_the_server_running(dashboard):
-    process, port, _ = dashboard
-    get(port, "/_stcore/health")
-    process.send_signal(signal.SIGTERM)  # only the loginsight process is told, not Streamlit
-    process.communicate(timeout=30)
-    deadline = time.monotonic() + 20
+def nothing_listens_on(port, seconds=20):
+    deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         with socket.socket() as sock:
             sock.settimeout(1)
             if sock.connect_ex(("127.0.0.1", port)) != 0:
-                return
+                return True
         time.sleep(0.3)
-    raise AssertionError("the Streamlit server is still listening after the command ended")
+    return False
+
+
+@pytest.mark.parametrize("name", ["SIGTERM", "SIGHUP"])
+def test_being_told_to_stop_ends_the_server_quickly_and_leaves_nothing_behind(dashboard, name):
+    if not hasattr(signal, name):
+        pytest.skip(f"this system has no {name}")
+    process, port, _ = dashboard
+    get(port, "/_stcore/health")
+    started = time.monotonic()
+    process.send_signal(getattr(signal, name))  # only the loginsight process is told
+    process.communicate(timeout=30)
+    # a supervisor gives a service a few seconds before it kills it: well under 10 s here
+    assert time.monotonic() - started < 8
+    assert process.returncode == 0
+    assert nothing_listens_on(port), "the Streamlit server is still listening after the end"
+
+
+def test_a_port_in_use_is_reported_at_once_and_nothing_is_started(tmp_path):
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port = taken.getsockname()[1]
+        done = subprocess.run(
+            [sys.executable, "-m", "loginsight", "dashboard", "--port", str(port)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=dict(os.environ, HOME=str(tmp_path)),
+        )
+    assert done.returncode == 1
+    assert f"port {port} is already in use" in done.stderr
+    assert "open http" not in done.stdout and "Traceback" not in done.stderr
 
 
 def own_network_address():
