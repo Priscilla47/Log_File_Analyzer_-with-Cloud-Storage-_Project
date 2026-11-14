@@ -7,6 +7,7 @@ import pytest
 
 pytest.importorskip("streamlit")
 
+import streamlit  # noqa: E402
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from loginsight.cli import main  # noqa: E402
@@ -15,6 +16,13 @@ from loginsight.detection.models import Severity  # noqa: E402
 
 SAMPLES = Path(__file__).resolve().parents[2] / "data" / "samples"
 DEMO = (SAMPLES / "demo.log").read_bytes()
+
+
+@pytest.fixture(autouse=True)
+def fresh_cache():
+    streamlit.cache_resource.clear()
+    yield
+    streamlit.cache_resource.clear()
 
 
 def upload(name, raw):
@@ -130,3 +138,36 @@ def test_each_address_request_count_adds_up_to_the_total_on_the_cards():
         app.selectbox[-1].select(choice).run()
         seen += int([m.value for m in app.metric if m.label == "Requests"][-1])
     assert 0 < seen <= total
+
+
+def test_changing_a_filter_does_not_read_the_log_again(monkeypatch):
+    calls = []
+    real = data.analyze_upload
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(data, "analyze_upload", counting)
+    app = upload("demo.log", DEMO)
+    assert len(calls) == 1
+    app.multiselect[0].select(Severity.HIGH).run()
+    app.multiselect[1].select("xss").run()
+    app.selectbox[-1].select(app.selectbox[-1].options[0]).run()
+    assert len(calls) == 1
+
+
+def test_a_different_period_or_file_does_read_it_again(monkeypatch):
+    calls = []
+    real = data.analyze_upload
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(data, "analyze_upload", counting)
+    app = upload("demo.log", DEMO)
+    app.radio[0].set_value("minute").run()
+    assert len(calls) == 2
+    app.file_uploader[0].upload("other.log", DEMO.replace(b"203.0.113", b"198.51.100")).run()
+    assert len(calls) == 3 and not app.exception

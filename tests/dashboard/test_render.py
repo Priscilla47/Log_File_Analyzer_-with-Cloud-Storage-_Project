@@ -88,6 +88,10 @@ class FakeStreamlit:
         self.calls.append(("columns", count))
         return [Column(self) for _ in range(count)]
 
+    def cache_resource(self, **kwargs):
+        self.calls.append(("cache_resource", kwargs.get("max_entries"), kwargs.get("show_spinner")))
+        return lambda function: function
+
     def success(self, text):
         self.calls.append(("success", text))
 

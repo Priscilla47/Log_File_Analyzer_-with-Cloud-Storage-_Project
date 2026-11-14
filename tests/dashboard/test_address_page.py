@@ -130,3 +130,13 @@ class TestTheOutcomeKeepsTheRequests:
         outcome = data.analyze_upload(DEMO, "demo.log")
         assert len(outcome.entries) == outcome.report.summary.total_requests
         assert data.analyze_upload(b"junk\n", "j.log").entries == []
+
+
+class TestTheAnalysisIsKept:
+    def test_the_page_asks_for_one_kept_analysis(self):
+        fake = demo()
+        assert fake.of("cache_resource") == [(1, "Reading the log…")]
+        assert fake.names().index("cache_resource") < fake.names().index("columns")
+
+    def test_nothing_is_cached_before_a_file_is_chosen(self):
+        assert "cache_resource" not in run(None).names()
