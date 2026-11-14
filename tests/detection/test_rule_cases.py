@@ -6,6 +6,7 @@ failure names the rule and the case, so it can be fixed without hunting.
 """
 
 import importlib.util
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -130,15 +131,29 @@ def test_a_match_case_is_caught_however_it_is_written(match_variant):
     assert BY_ID[rule_id].compiled.search(normalise(text)), (rule_id, how, text)
 
 
+def entry_with(rule, value):
+    """A request whose field read by ``rule`` holds ``value``, and nothing else is unusual."""
+    if rule.field == "target":
+        return entry_for(value)
+    return replace(entry_for("/ok"), **{rule.field: value})
+
+
+def expected_evidence(rule, value):
+    if rule.field == "target":
+        return f"GET {value} HTTP/1.1"[:200]
+    return f"{rule.field.replace('_', ' ')}: {value}"[:200]
+
+
 def test_a_match_case_fires_through_the_whole_engine(match_case):
     rule_id, target = match_case
-    found = detect_signatures([entry_for("/ok"), entry_for(target)], load_rules())
+    rule = BY_ID[rule_id]
+    found = detect_signatures([entry_for("/ok"), entry_with(rule, target)], load_rules())
     ours = [d for d in found if d.rule_id == rule_id]
     assert len(ours) == 1
     assert ours[0].first_index == 1
-    assert ours[0].label == BY_ID[rule_id].label
-    assert ours[0].severity is BY_ID[rule_id].severity
-    assert ours[0].evidence == f"GET {target} HTTP/1.1"[:200]
+    assert ours[0].label == rule.label
+    assert ours[0].severity is rule.severity
+    assert ours[0].evidence == expected_evidence(rule, target)
 
 
 def test_a_no_match_case_is_left_alone_by_its_rule(no_match_case):

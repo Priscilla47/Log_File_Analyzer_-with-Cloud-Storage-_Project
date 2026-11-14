@@ -18,7 +18,13 @@ try:  # the standard library reads TOML from Python 3.11
 except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
     import tomli as tomllib
 
-from loginsight.detection.models import BEHAVIOURAL_LABELS, LABELS, Severity, SignatureRule
+from loginsight.detection.models import (
+    BEHAVIOURAL_LABELS,
+    FIELDS,
+    LABELS,
+    Severity,
+    SignatureRule,
+)
 
 # A rule is matched against up to 2,048 characters per request, so very long patterns only
 # add risk of slow matching.
@@ -26,6 +32,7 @@ MAX_PATTERN_LENGTH = 500
 
 _ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _SIGNATURE_KEYS = ("id", "label", "severity", "description", "pattern")
+_OPTIONAL_SIGNATURE_KEYS = ("field",)
 _TOP_LEVEL_KEYS = ("signature", "behaviour")
 _BEHAVIOUR_TABLES = ("brute_force", "scanner")
 
@@ -101,7 +108,7 @@ def _build_signature(entry: dict, number: int, seen: dict, problems: list[str]):
     )
     found = []  # this rule's own problems, so a bad rule is not built
 
-    _unknown_keys(entry, _SIGNATURE_KEYS, owner, found)
+    _unknown_keys(entry, _SIGNATURE_KEYS + _OPTIONAL_SIGNATURE_KEYS, owner, found)
     for key in _SIGNATURE_KEYS:
         if key not in entry:
             found.append(f"{owner}: missing required key {key!r}")
@@ -133,6 +140,11 @@ def _build_signature(entry: dict, number: int, seen: dict, problems: list[str]):
             severity = Severity.from_name(text["severity"])
         except ValueError as error:
             found.append(f"{owner}: severity: {error}")
+    if "field" in entry:
+        if not isinstance(entry["field"], str):
+            found.append(f"{owner}: field must be text, not {_describe(entry['field'])}")
+        elif entry["field"] not in FIELDS:
+            found.append(f"{owner}: field {entry['field']!r} must be one of: {', '.join(FIELDS)}")
     if "description" in text and not text["description"].strip():
         found.append(f"{owner}: description must not be empty")
     if "pattern" in text:
@@ -159,6 +171,7 @@ def _build_signature(entry: dict, number: int, seen: dict, problems: list[str]):
         severity=severity,
         description=text["description"],
         pattern=text["pattern"],
+        field=entry.get("field", "target"),
     )
 
 

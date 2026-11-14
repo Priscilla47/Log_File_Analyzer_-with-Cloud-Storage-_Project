@@ -1,13 +1,16 @@
 """Signature detection: match each request against the rules, after undoing the disguises.
 
 Attackers hide patterns with URL encoding, so a rule is not matched against the request as
-logged but against a normalised version of its path and query string (see :func:`normalise`).
-Only the path and query are looked at, never the user agent or the referer.
+logged but against a normalised version of the text it reads (see :func:`normalise`). Most
+rules read the path and query string; a rule with a ``field`` reads the user agent or the
+referer instead, and nothing else of a request is looked at.
 
 Limits worth knowing:
 
-* Only the first :data:`MAX_TARGET_LENGTH` characters of a request are examined, which bounds
-  the work done per line. An attack that starts after that point is not seen.
+* Only the first :data:`MAX_TARGET_LENGTH` characters of the text a rule reads (the request,
+  the user agent or the referer) are examined, which bounds the work done per line. An attack
+  that starts after that point is not seen, so padding a user agent with 2,048 characters
+  hides a payload from the Shellshock rule.
 * Up to :data:`MAX_DECODE_PASSES` layers of percent-encoding are removed. Older tricks such as
   overlong UTF-8 (``%c0%ae`` for a dot) and IIS-style ``%u0041`` are not decoded.
 * Patterns are ordinary regular expressions, which can be slow on hostile input if written
@@ -49,6 +52,25 @@ def normalise(target: str) -> str:
     return _WHITESPACE.sub(" ", text).lower()
 
 
+_FIELD_NAMES = {"user_agent": "user agent", "referer": "referer"}
+
+
+def _value(entry: LogEntry, field: str) -> str | None:
+    """The text of ``entry`` that a rule reading ``field`` looks at, or ``None`` if it has none."""
+    if field == "user_agent":
+        return entry.user_agent
+    if field == "referer":
+        return entry.referer
+    return entry.target
+
+
+def _evidence(entry: LogEntry, field: str, value: str) -> str:
+    """The request line for a rule on the target; the field's name and value for any other."""
+    if field == "target":
+        return shorten_evidence(entry.request)
+    return shorten_evidence(f"{_FIELD_NAMES[field]}: {value}")
+
+
 def detect_signatures(
     entries: Iterable[LogEntry], rules: RuleSet | Iterable[SignatureRule]
 ) -> list[Detection]:
@@ -61,20 +83,25 @@ def detect_signatures(
     signatures = rules.signatures if isinstance(rules, RuleSet) else tuple(rules)
     found = []
     for index, entry in enumerate(entries):
-        text = normalise(entry.target)
+        values = {}  # field -> (text as logged, normalised text), computed when a rule needs it
         for rule in signatures:
-            if rule.compiled.search(text):
-                found.append(
-                    Detection(
-                        rule_id=rule.id,
-                        label=rule.label,
-                        severity=rule.severity,
-                        ip=entry.ip,
-                        time=entry.time,
-                        first_index=index,
-                        last_index=index,
-                        count=1,
-                        evidence=shorten_evidence(entry.request),
-                    )
+            if rule.field not in values:
+                raw = _value(entry, rule.field)
+                values[rule.field] = None if raw is None else (raw, normalise(raw))
+            value = values[rule.field]
+            if value is None or not rule.compiled.search(value[1]):
+                continue
+            found.append(
+                Detection(
+                    rule_id=rule.id,
+                    label=rule.label,
+                    severity=rule.severity,
+                    ip=entry.ip,
+                    time=entry.time,
+                    first_index=index,
+                    last_index=index,
+                    count=1,
+                    evidence=_evidence(entry, rule.field, value[0]),
                 )
+            )
     return found
