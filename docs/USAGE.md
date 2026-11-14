@@ -74,7 +74,7 @@ Finding attacks is not an error: the command exits with 0 whether or not it foun
 $ loginsight dashboard
 ```
 
-starts the dashboard and prints its address (by default `http://127.0.0.1:8501`); open that in your browser, and press Ctrl+C to stop it. `--port N` chooses the port. It listens on your own computer only (`127.0.0.1`), never on the network, because a log can hold other people's addresses, and it does not send Streamlit's usage statistics. Without the dashboard extra the command says how to install it and exits with code 2.
+starts the dashboard and prints its address (by default `http://127.0.0.1:8501`); open that in your browser, and press Ctrl+C to stop it (a termination signal, as sent by `kill` or a service manager, stops it too and ends with code 0; the server never stays behind). `--port N` chooses the port; if something already listens on it the command says so and exits with code 1 before starting anything. It listens on your own computer only (`127.0.0.1`), never on the network, because a log can hold other people's addresses, and it does not send Streamlit's usage statistics. Without the dashboard extra the command says how to install it and exits with code 2.
 
 Choose an access log on the page (up to 50 MB; for a bigger one use the command line) and it shows the headline numbers: requests, unique IPs, the error rate, the data sent and how many lines were skipped. They are the numbers of `loginsight analyze`, calculated by the same code. If more than 10 percent of the lines could not be read it warns you, and if none could be read it says so instead of showing zeros.
 
@@ -122,7 +122,7 @@ The same log always gives byte-identical files: they hold no creation time and n
 | Code | Meaning |
 | --- | --- |
 | 0 | success, including a log with no requests and a log with attacks in it |
-| 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), or the output folder cannot be written. One line on standard error, no traceback, and no report files |
+| 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), the output folder cannot be written, or the dashboard's port is already in use. One line on standard error, no traceback, and no report files |
 | 2 | wrong usage, such as an unknown option or `--top 0`, or `loginsight dashboard` without the dashboard extra installed |
 
 Lines that cannot be read are skipped and counted, and the counts are always shown. If more than 10 percent of the lines were skipped, a warning is printed on standard error, so it never ends up inside JSON output.

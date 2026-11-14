@@ -7,7 +7,13 @@ import pytest
 
 from loginsight.cli import main
 from loginsight.dashboard import data
-from loginsight.dashboard.data import UPLOAD_LIMIT_BYTES, UPLOAD_LIMIT_MB, Card, analyze_upload
+from loginsight.dashboard.data import (
+    UPLOAD_LIMIT_BYTES,
+    UPLOAD_LIMIT_MB,
+    Card,
+    analyze_upload,
+    limit_text,
+)
 from loginsight.reporting.report import human_bytes
 
 SAMPLES = Path(__file__).resolve().parents[2] / "data" / "samples"
@@ -18,6 +24,9 @@ SERVER = '203.0.113.7 - - [10/Oct/2026:10:00:03 +0000] "GET /boom HTTP/1.1" 500 
 
 def cards(outcome):
     return {card.label: card for card in outcome.cards}
+
+
+MB = 1024 * 1024
 
 
 class TestTheLimit:
@@ -33,9 +42,36 @@ class TestTheLimit:
         outcome = analyze_upload(b"x" * (UPLOAD_LIMIT_BYTES + 1), "big.log")
         assert outcome.cards == [] and outcome.report is None
         assert outcome.error == (
-            "This file is 50.0 MB, and the dashboard takes files up to 50 MB. "
+            "This file is 50.1 MB, and the dashboard takes files up to 50 MB. "
             "For a bigger log use the command line: loginsight analyze FILE"
         )
+
+    @pytest.mark.parametrize(
+        ("size", "text"),
+        [
+            (0, "0.0 MB"),
+            (1, "0.1 MB"),  # rounded up, never down to a smaller-looking size
+            (MB, "1.0 MB"),
+            (MB + 1, "1.1 MB"),
+            (5 * MB, "5.0 MB"),
+            (50 * MB, "50.0 MB"),
+            (50 * MB + 1, "50.1 MB"),
+            (int(1.5 * MB), "1.5 MB"),
+            (int(2.04 * MB), "2.1 MB"),
+        ],
+    )
+    def test_a_size_is_rounded_up_so_it_never_reads_as_the_limit(self, size, text):
+        assert limit_text(size) == text
+
+    @pytest.mark.parametrize(
+        ("limit", "text"), [(50 * MB, "50 MB"), (10 * MB, "10 MB"), (int(2.5 * MB), "2.5 MB")]
+    )
+    def test_the_limit_itself_is_written_without_decimals_when_it_is_whole(self, limit, text):
+        assert limit_text(limit, decimals=False) == text
+
+    def test_a_file_over_the_limit_never_reads_as_the_limit(self):
+        message = analyze_upload(b"x" * (UPLOAD_LIMIT_BYTES + 1), "big.log").error
+        assert "This file is 50.0 MB" not in message
 
     def test_the_limit_can_be_given(self):
         assert analyze_upload(GOOD.encode(), "a.log", limit=10).error is not None

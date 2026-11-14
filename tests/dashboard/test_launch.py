@@ -64,6 +64,53 @@ class TestStreamlitCommand:
         assert str(port) in launch.streamlit_command(port)
 
 
+class TestPortIsFree:
+    def test_a_port_nobody_listens_on_is_free(self):
+        import socket
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        assert launch.port_is_free(port)
+
+    def test_a_port_with_a_listener_is_not(self):
+        import socket
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            sock.listen()
+            assert not launch.port_is_free(sock.getsockname()[1])
+
+    def test_a_port_that_only_has_closed_connections_waiting_is_free(self):
+        # right after a dashboard ends its port is in TIME_WAIT: the server can use it again
+        # (it sets SO_REUSEADDR), so saying "in use" would be wrong
+        import socket
+
+        with socket.socket() as server:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind(("127.0.0.1", 0))
+            server.listen()
+            port = server.getsockname()[1]
+            with socket.create_connection(("127.0.0.1", port)) as client:
+                connection, _ = server.accept()
+                connection.close()  # the side that closes first keeps the port in TIME_WAIT
+                client.recv(1)
+        assert launch.port_is_free(port)
+
+    def test_the_probe_does_not_keep_the_port(self):
+        import socket
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        assert launch.port_is_free(port) and launch.port_is_free(port)
+
+    @pytest.mark.parametrize("port", [0, -1, 65536])
+    def test_a_bad_port_is_refused(self, port):
+        with pytest.raises(ValueError):
+            launch.port_is_free(port)
+
+
 class TestIsAvailable:
     def test_true_when_streamlit_can_be_found(self, monkeypatch):
         monkeypatch.setattr(launch.importlib.util, "find_spec", lambda name: object())
@@ -81,22 +128,27 @@ class FakeProcess:
 
     started = []
 
-    def __init__(self, command, code=0, interrupt=False, slow_to_stop=False):
+    def __init__(self, command, code=0, interrupt=False, slow_to_stop=False, signalled=False):
         self.command, self.code, self.interrupt, self.slow_to_stop = (
             command,
             code,
             interrupt,
             slow_to_stop,
         )
+        self.signalled = signalled  # the first wait is cut short by SIGTERM or SIGHUP
         self.killed = False
         self.terminated = False
         self.finished = False
         self.waits = []
+        self.events = []  # what happened, in order
 
     def wait(self, timeout=None):
         self.waits.append(timeout)
+        self.events.append(f"wait({timeout})")
         if self.interrupt and len(self.waits) == 1:
             raise KeyboardInterrupt
+        if self.signalled and len(self.waits) == 1:
+            raise cli._Terminated
         if self.slow_to_stop and timeout is not None and not self.killed:
             raise subprocess.TimeoutExpired(self.command, timeout)
         return self.code
@@ -106,6 +158,7 @@ class FakeProcess:
 
     def terminate(self):
         self.terminated = True
+        self.events.append("terminate")
 
     def kill(self):
         self.killed = True
@@ -123,6 +176,7 @@ class Started(list):
 def streamlit(monkeypatch):
     """Pretend Streamlit is installed and replace the process that would run it."""
     monkeypatch.setattr(cli, "streamlit_available", lambda: True)
+    monkeypatch.setattr(cli, "port_is_free", lambda port: True)
     made = Started()
 
     def popen(command, **kwargs):
@@ -222,7 +276,27 @@ class TestCommandLine:
         (process,) = streamlit
         assert not process.terminated
 
-    def test_being_asked_to_terminate_stops_the_process_too(self, run, streamlit, monkeypatch):
+    def test_being_asked_to_terminate_stops_the_process_at_once_and_is_not_an_error(
+        self, run, streamlit
+    ):
+        streamlit.options["signalled"] = True
+        status, _, _ = run("dashboard")
+        (process,) = streamlit
+        assert status == 0
+        # nobody else told Streamlit, so it is told now, and given time to finish
+        assert process.terminated and process.waits == [None, 10] and not process.killed
+        # told to stop BEFORE the wait, not after it has run out: that was a 10 s delay
+        assert process.events[:3] == ["wait(None)", "terminate", "wait(10)"]
+
+    def test_a_process_that_ignores_the_termination_is_killed(self, run, streamlit):
+        streamlit.options.update(signalled=True, slow_to_stop=True)
+        assert run("dashboard")[0] == 0
+        (process,) = streamlit
+        assert process.terminated and process.killed
+
+    def test_terminate_and_hangup_are_handled_where_the_system_has_them(
+        self, run, streamlit, monkeypatch
+    ):
         import signal
 
         installed = []
@@ -234,19 +308,36 @@ class TestCommandLine:
 
         monkeypatch.setattr(cli.signal, "signal", record)
         run("dashboard")
-        number, handler = installed[0]  # the first one: the handler for the running dashboard
-        assert number == signal.SIGTERM and callable(handler)
-        # asked to terminate, the command ends the dashboard exactly as Ctrl+C does
-        with pytest.raises(KeyboardInterrupt):
-            handler(signal.SIGTERM, None)
-        assert installed[-1][0] == signal.SIGTERM  # and the old handler was put back afterwards
+        wanted = {signal.SIGTERM} | ({signal.SIGHUP} if hasattr(signal, "SIGHUP") else set())
+        assert set(cli.STOP_SIGNALS) == wanted
+        handlers = [(n, h) for n, h in installed[: len(wanted)]]
+        assert {n for n, _ in handlers} == wanted
+        for number, handler in handlers:
+            with pytest.raises(cli._Terminated):
+                handler(number, None)
+        assert {n for n, _ in installed[len(wanted) :]} == wanted  # and the old ones put back
 
-    def test_the_previous_terminate_handler_is_put_back(self, run, streamlit):
+    def test_the_previous_handlers_are_put_back(self, run, streamlit):
         import signal
 
-        before = signal.getsignal(signal.SIGTERM)
+        before = {n: signal.getsignal(n) for n in cli.STOP_SIGNALS}
         run("dashboard")
-        assert signal.getsignal(signal.SIGTERM) == before
+        assert {n: signal.getsignal(n) for n in cli.STOP_SIGNALS} == before
+
+    def test_a_port_that_is_in_use_is_reported_before_anything_starts(
+        self, run, streamlit, monkeypatch
+    ):
+        monkeypatch.setattr(cli, "port_is_free", lambda port: False)
+        status, out, err = run("dashboard", "--port", 8123)
+        assert status == 1 and out == ""
+        assert err == "loginsight: error: port 8123 is already in use; choose another with --port\n"
+        assert streamlit == []  # Streamlit was never started
+
+    def test_the_port_is_checked_with_the_one_asked_for(self, run, streamlit, monkeypatch):
+        asked = []
+        monkeypatch.setattr(cli, "port_is_free", lambda port: asked.append(port) or True)
+        run("dashboard", "--port", 9001)
+        assert asked == [9001]
 
     def test_the_address_is_printed_after_the_start_and_before_the_wait(self, run, monkeypatch):
         monkeypatch.setattr(cli, "streamlit_available", lambda: True)
