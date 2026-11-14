@@ -318,8 +318,9 @@ class TestTheCheckAgainstRealStreamlit:
             checked.radio()  # a required argument missing
 
     def test_a_call_streamlit_does_not_have_is_refused(self):
+        checked = Checked(FakeStreamlit(), real_streamlit)
         with pytest.raises(AttributeError):
-            Checked(FakeStreamlit(), real_streamlit).no_such_call
+            _ = checked.no_such_call
 
     def test_a_correct_call_goes_through_to_the_fake(self):
         fake = FakeStreamlit()
