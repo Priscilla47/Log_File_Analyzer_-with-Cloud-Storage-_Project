@@ -73,9 +73,9 @@ def build_report(
 ) -> Report:
     """Gather the statistics, the traffic over time and the detections into a :class:`Report`.
 
-    ``source_name`` is reduced to its file name. ``top_n`` and ``bucket`` ("minute" or "hour")
-    are checked here and raise :class:`ValueError` when wrong, even for a log with no entries.
-    Detections are put in the order of :attr:`Detection.sort_key`.
+    ``source_name`` is reduced to its file name. ``top_n`` and ``bucket`` ("minute", "hour" or
+    "day") are checked here and raise :class:`ValueError` when wrong, even for a log with no
+    entries. Detections are put in the order of :attr:`Detection.sort_key`.
     """
     if bucket not in BUCKET_SIZES:
         raise ValueError(f"bucket must be one of: {', '.join(BUCKET_SIZES)}; got {bucket!r}")

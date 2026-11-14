@@ -157,7 +157,7 @@ def top_paths_table(report: Report) -> dict[str, list]:
 def _facts(report: Report) -> list[str]:
     stats = report.stats
     return [
-        f"File: {report.source_name}",
+        f"File: {printable(report.source_name)}",
         f"Format: {report.log_format}",
         f"Lines: {stats.total_lines} read, {stats.parsed} parsed, {stats.skipped} skipped "
         f"({stats.success_rate:.1%} parsed)",
@@ -220,6 +220,13 @@ def _charts(report: Report) -> Charts:
 
 
 def limit_text(count: int, *, decimals: bool = True) -> str:
-    """A byte count in megabytes for the messages about the size limit: ``50.0 MB`` or ``50 MB``."""
-    megabytes = count / (1024 * 1024)
-    return f"{megabytes:.1f} MB" if decimals else f"{round(megabytes, 1):g} MB"
+    """A byte count in megabytes for the messages about the size limit.
+
+    With ``decimals`` it is rounded **up** to a tenth (``50.1 MB``), so a file just over a
+    limit of 50 MB never reads as "50.0 MB"; without, it is the exact limit (``50 MB``).
+    """
+    megabyte = 1024 * 1024
+    if decimals:
+        tenths = -(-count * 10 // megabyte)  # a ceiling, in whole numbers
+        return f"{tenths / 10:.1f} MB"
+    return f"{round(count / megabyte, 1):g} MB"

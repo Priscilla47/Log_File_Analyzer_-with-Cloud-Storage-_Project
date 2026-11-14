@@ -1,5 +1,7 @@
 """What the page does with Streamlit, tested with a fake one that records every call."""
 
+import inspect
+
 import pytest
 
 from loginsight.dashboard import data
@@ -117,9 +119,39 @@ class FakeStreamlit:
         return [call[1:] for call in self.calls if call[0] == name]
 
 
+try:
+    import streamlit as real_streamlit
+except ImportError:  # the tests that need the real thing are skipped, the others still run
+    real_streamlit = None
+
+
+class Checked:
+    """Hands every call to ``target`` after checking it fits the call of the same name in the
+    real Streamlit: the fake accepts any argument, so without this a page could pass a keyword
+    that the installed Streamlit does not have and every test would still be green."""
+
+    def __init__(self, target, real):
+        self.target, self.real = target, real
+
+    def __getattr__(self, name):
+        method = getattr(self.target, name)
+        if not callable(method):
+            return method
+        signature = inspect.signature(getattr(self.real, name))  # no such call: AttributeError
+
+        def call(*args, **kwargs):
+            signature.bind(*args, **kwargs)  # TypeError for an argument Streamlit does not take
+            result = method(*args, **kwargs)
+            if name == "columns":  # the columns take the same calls as the page
+                return [Checked(column, self.real) for column in result]
+            return result
+
+        return call
+
+
 def run(upload, bucket="hour", **choices):
     fake = FakeStreamlit(upload, bucket, **choices)
-    show_page(fake)
+    show_page(fake if real_streamlit is None else Checked(fake, real_streamlit))
     return fake
 
 
@@ -155,7 +187,13 @@ class TestWithAGoodLog:
         assert [m[1] for m in metrics] == ["2", "2", "50.0%", "1.5 KiB", "0"]
 
     def test_each_card_carries_its_explanation(self, fake):
-        assert all(len(m[2]) > 10 for m in fake.of("column.metric"))
+        assert [m[2] for m in fake.of("column.metric")] == [
+            "Lines of the log that were read as a request.",
+            "Different client addresses that sent a request.",
+            "Share of requests answered with an error (4xx and 5xx).",
+            "Total size of the responses, as the server logged it.",
+            "Lines that could not be read, out of 2 lines in the file.",
+        ]
 
     def test_the_facts_are_shown_as_plain_text_not_markdown(self, fake):
         assert [t[0] for t in fake.of("text")] == [
@@ -196,10 +234,17 @@ class TestProblems:
         assert fake.of("info") == [("The file has no requests in it.",)]
         assert fake.of("column.metric")[0][:2] == ("Requests", "0")
 
-    def test_a_hostile_name_is_not_interpreted(self):
-        fake = run(Upload(GOOD.encode(), "**bold** [x](http://evil)\x1b.log"))
-        assert ("text", "File: **bold** [x](http://evil)\x1b.log") not in fake.calls  # name reduced
+    def test_a_hostile_name_is_shown_as_escaped_plain_text_and_nowhere_else(self):
+        fake = run(Upload(GOOD.encode(), "**bold** [x](evil)\x1b[2J<b>.log"))
+        assert ("text", "File: **bold** [x](evil)\\x1b[2J<b>.log") in fake.calls
         assert all("evil" not in str(call) for call in fake.calls if call[0] != "text")
+        assert not {"markdown", "write", "html"} & set(fake.names())
+
+    def test_a_newline_in_the_name_cannot_forge_another_line_of_facts(self):
+        fake = run(Upload(GOOD.encode(), "a\nFormat: nginx.log"))
+        texts = [t[0] for t in fake.of("text")]
+        assert texts[0] == "File: a\\x0aFormat: nginx.log"
+        assert [t for t in texts if t.startswith("Format:")] == ["Format: apache"]
 
     def test_nothing_raises_for_any_kind_of_upload(self):
         for raw in (b"", b"\n", bytes(range(256)) * 50, b"\xef\xbb\xbf", GOOD.encode() * 100):
@@ -241,7 +286,8 @@ class TestCharts:
         assert table == {"Path": ["/a", "/b"], "Requests": [3, 1]}
         assert options["horizontal"] is True and options["sort"] == "-Requests"
         assert options["x"] == "Path" and options["y"] == "Requests"
-        assert options["x_label"] == "Requests" or options["y_label"] == "Requests"
+        # the labels name what the axes show: Streamlit turns the chart on its side by itself
+        assert options["x_label"] == "Path" and options["y_label"] == "Requests"
 
     def test_the_chart_data_equals_the_numbers_on_the_cards(self, fake):
         status = [c for c in fake.calls if c[0] == "bar_chart"][0][1]
@@ -291,3 +337,30 @@ class TestCharts:
 
     def test_a_normal_range_has_no_note(self, fake):
         assert not any("Quiet periods" in c[0] for c in fake.of("caption"))
+
+
+@pytest.mark.skipif(real_streamlit is None, reason="Streamlit is not installed")
+class TestTheCheckAgainstRealStreamlit:
+    def test_a_keyword_streamlit_does_not_have_is_refused(self):
+        checked = Checked(FakeStreamlit(), real_streamlit)
+        with pytest.raises(TypeError):
+            checked.bar_chart({}, no_such_option=1)
+        with pytest.raises(TypeError):
+            checked.radio()  # a required argument missing
+
+    def test_a_call_streamlit_does_not_have_is_refused(self):
+        checked = Checked(FakeStreamlit(), real_streamlit)
+        with pytest.raises(AttributeError):
+            _ = checked.no_such_call
+
+    def test_a_correct_call_goes_through_to_the_fake(self):
+        fake = FakeStreamlit()
+        Checked(fake, real_streamlit).bar_chart({"a": [1]}, x="a")
+        assert fake.names() == ["bar_chart"]
+
+    def test_the_columns_are_checked_too(self):
+        fake = FakeStreamlit()
+        (column,) = Checked(fake, real_streamlit).columns(1)
+        column.metric("Requests", "1", help="x")
+        with pytest.raises(TypeError):
+            column.metric("Requests", "1", no_such_option=1)
