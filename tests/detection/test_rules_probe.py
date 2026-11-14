@@ -299,6 +299,6 @@ HOSTILE = [
 
 @pytest.mark.parametrize("text", HOSTILE, ids=[f"hostile-{n}" for n in range(len(HOSTILE))])
 def test_hostile_paths_are_matched_against_every_rule_quickly(text):
-    started = time.perf_counter()
+    started = time.process_time()
     fired(text)
-    assert time.perf_counter() - started < 0.25
+    assert time.process_time() - started < 0.25

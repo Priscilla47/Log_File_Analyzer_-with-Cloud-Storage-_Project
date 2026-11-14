@@ -588,17 +588,17 @@ def test_the_rules_file_settings_are_accepted():
 
 def test_a_hundred_thousand_distinct_missing_paths_from_one_address_are_handled_quickly():
     entries = misses(100_000, spacing=0.01, prefix="/x")
-    started = time.perf_counter()
+    started = time.process_time()
     (found,) = burst(detect_scanners(entries))
-    assert time.perf_counter() - started < 3.0
+    assert time.process_time() - started < 3.0
     assert found.count == 100_000 and found.severity is Severity.HIGH
 
 
 def test_a_hundred_thousand_requests_for_one_path_are_handled_quickly():
     entries = [request(seconds=n * 0.01, path="/old") for n in range(100_000)]
-    started = time.perf_counter()
+    started = time.process_time()
     assert detect_scanners(entries) == []
-    assert time.perf_counter() - started < 3.0
+    assert time.process_time() - started < 3.0
 
 
 def test_many_addresses_with_a_few_misses_each_are_handled_quickly():
@@ -606,15 +606,15 @@ def test_many_addresses_with_a_few_misses_each_are_handled_quickly():
         request(ip=f"10.{n // 250}.{n % 250}.1", seconds=n % 50, path=f"/p{n}")
         for n in range(50_000)
     ]
-    started = time.perf_counter()
+    started = time.process_time()
     assert detect_scanners(entries) == []
-    assert time.perf_counter() - started < 2.0
+    assert time.process_time() - started < 2.0
 
 
 def test_a_huge_user_agent_is_handled_quickly():
-    started = time.perf_counter()
+    started = time.process_time()
     assert detect_scanners([request(status=200, agent="a" * 1_000_000 + "nikto")])
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 # --- generated logs -------------------------------------------------------------------

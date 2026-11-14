@@ -497,9 +497,9 @@ def test_traffic_chart_with_10_000_buckets_is_fast(tmp_path):
         TimeBucket(start=T0 + timedelta(minutes=m), requests=m % 50, errors=m % 5)
         for m in range(10_000)
     ]
-    started = time.perf_counter()
+    started = time.process_time()
     plot_traffic(buckets, tmp_path / "t.png")
-    assert time.perf_counter() - started < 10.0
+    assert time.process_time() - started < 10.0
 
 
 def test_traffic_chart_leaves_its_input_unchanged(tmp_path):

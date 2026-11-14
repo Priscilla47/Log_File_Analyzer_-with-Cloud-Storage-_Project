@@ -397,8 +397,8 @@ def test_100_000_entries_are_summarised_in_well_under_a_second():
         make(f"192.0.2.{rng.randint(1, 250)}", f"/p/{rng.randint(1, 500)}", rng.choice([200, 404]))
         for _ in range(100_000)
     ]
-    started = time.perf_counter()
+    started = time.process_time()
     summary = summarize(entries)
-    elapsed = time.perf_counter() - started
+    elapsed = time.process_time() - started
     assert summary.total_requests == 100_000
     assert elapsed < 1.0

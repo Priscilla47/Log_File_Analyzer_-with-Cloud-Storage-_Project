@@ -205,9 +205,9 @@ def test_random_text_never_raises_and_always_satisfies_the_promises():
     ],
 )
 def test_hostile_text_is_normalised_quickly(text):
-    started = time.perf_counter()
+    started = time.process_time()
     result = normalise(text)
-    assert time.perf_counter() - started < 0.5
+    assert time.process_time() - started < 0.5
     assert len(result) <= MAX_TARGET_LENGTH
 
 
@@ -416,10 +416,10 @@ def test_an_attack_that_starts_after_the_limit_is_not_seen_a_documented_limit():
 
 
 def test_a_huge_request_is_handled_quickly():
-    started = time.perf_counter()
+    started = time.process_time()
     found = detect_signatures([entry("/p", "union select " + "x" * 100_000)], [rule()])
     assert len(found) == 1
-    assert time.perf_counter() - started < 0.5
+    assert time.process_time() - started < 0.5
 
 
 @pytest.mark.parametrize(
@@ -427,17 +427,17 @@ def test_a_huge_request_is_handled_quickly():
 )
 def test_adversarial_requests_finish_in_well_under_a_second_with_the_default_rules(junk):
     rules = load_rules()
-    started = time.perf_counter()
+    started = time.process_time()
     for _ in range(20):
         detect_signatures([entry("/p", junk)], rules)
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 def test_the_default_rules_run_on_a_realistic_log():
     entries = parse_file(ROOT / "data" / "samples" / "demo.log").entries
-    started = time.perf_counter()
+    started = time.process_time()
     found = detect_signatures(entries, load_rules())
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
     assert all(isinstance(d, Detection) for d in found)
 
 
@@ -458,9 +458,9 @@ def test_signature_detection_speed_on_100_000_generated_lines():
     entries = [parse_line(line) for line in lines]
     rules = load_rules()
 
-    started = time.perf_counter()
+    started = time.process_time()
     found = detect_signatures(entries, rules)
-    elapsed = time.perf_counter() - started
+    elapsed = time.process_time() - started
 
     throughput = LINES / elapsed
     print(

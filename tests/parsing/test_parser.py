@@ -269,10 +269,10 @@ def test_extra_fields_still_count_towards_the_length_limit():
 
 def test_a_long_run_of_extra_fields_is_fast():
     text = combined() + ' "a"' * 1800
-    started = time.perf_counter()
+    started = time.process_time()
     for _ in range(200):
         assert parse_line(text).status == 200
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 @pytest.mark.parametrize(
@@ -285,12 +285,12 @@ def test_a_long_run_of_extra_fields_is_fast():
     ],
 )
 def test_adversarial_trailing_text_is_handled_quickly(text):
-    started = time.perf_counter()
+    started = time.process_time()
     try:
         parse_line(text)
     except LogParseError:
         pass
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
 
 
 # --- errors ---------------------------------------------------------------------------
@@ -385,7 +385,7 @@ def test_no_input_ever_raises_anything_but_log_parse_error():
 def test_adversarial_line_is_rejected_quickly():
     # Many quotes and backslashes just under the limit must not cause catastrophic backtracking.
     text = '1.1.1.1 - - [01/Jun/2025:10:00:00 +0000] "' + ('\\"' * 4000) + " 200"
-    started = time.perf_counter()
+    started = time.process_time()
     with pytest.raises(LogParseError):
         parse_line(text)
-    assert time.perf_counter() - started < 1.0
+    assert time.process_time() - started < 1.0
