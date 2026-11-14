@@ -161,7 +161,8 @@ def _run(args: argparse.Namespace) -> int:
     except OSError as error:
         reason = error.strerror or type(error).__name__
         return _fail(f"cannot read {args.file}: {reason}")
-    result = parse_text(text, detect_log_format(text))
+    log_format = detect_log_format(text)
+    result = parse_text(text, log_format)
 
     stats = result.stats
     if stats.total_lines and not stats.parsed:
@@ -187,6 +188,7 @@ def _run(args: argparse.Namespace) -> int:
         source_name=args.file,
         top_n=getattr(args, "top", 10),
         bucket=getattr(args, "bucket", "hour"),
+        log_format=log_format,
     )
 
     if args.output is not None:

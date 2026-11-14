@@ -29,6 +29,8 @@ loginsight detect  FILE [--format text|json|md] [--output DIR] [--min-severity l
 
 `python -m loginsight ...` does the same as `loginsight ...`.
 
+The tool works out whether the log was written by Apache or by Nginx and says so in every report (`Format:` in the text view, `Log format` in the Markdown report, `source.format` in the JSON). A log with no special characters in it reads the same either way and is reported as `apache`.
+
 ### analyze: what happened
 
 `analyze` shows how many requests there were, from how many addresses, the share of errors, the most requested paths and busiest addresses, and the traffic over time.
