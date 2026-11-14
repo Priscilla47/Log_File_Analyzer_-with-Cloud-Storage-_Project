@@ -45,11 +45,23 @@ class TestUsageCommands:
         monkeypatch.chdir(ROOT)  # the commands name files relative to the repository
         arguments = shlex.split(command)
         assert arguments[0] == "loginsight"
+        if arguments[1] == "dashboard":
+            pytest.skip("starts a server: its arguments are checked by the next test")
         status = main(with_temporary_output(arguments[1:], tmp_path / "out"))
         captured = capsys.readouterr()
         assert status == 0, captured.err
         assert captured.out.strip()
         assert "Traceback" not in captured.err
+
+    @pytest.mark.parametrize("command", [c for c in usage_commands() if " dashboard" in c])
+    def test_a_documented_dashboard_command_is_valid_without_starting_it(self, command):
+        from loginsight.cli import build_parser
+
+        arguments = shlex.split(command)[1:]
+        assert build_parser().parse_args(arguments).command == "dashboard"
+
+    def test_the_guide_documents_the_dashboard_command(self):
+        assert any(" dashboard" in command for command in usage_commands())
 
     def test_every_sample_path_in_the_guide_exists(self):
         text = USAGE.read_text(encoding="utf-8")
@@ -65,6 +77,7 @@ class TestUsageCommands:
             "--bucket",
             "--min-severity",
             "--rules",
+            "--port",
             "--version",
         ):
             assert option in text, option
