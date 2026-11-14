@@ -14,23 +14,31 @@ class Upload:
 
     def __init__(self, raw: bytes, name: str = "access.log"):
         self.raw, self.name = raw, name
+        self.file_id = "a1b2c3"  # Streamlit gives each chosen file an id of its own
 
     def getvalue(self) -> bytes:
         return self.raw
 
 
 class Column:
-    def __init__(self, calls):
-        self.calls = calls
+    """A column of the page: ``metric`` is recorded as its own call, the rest like the page's."""
+
+    def __init__(self, fake):
+        self.fake = fake
+        self.calls = fake.calls
 
     def metric(self, label, value, **kwargs):
         self.calls.append(("column.metric", label, value, kwargs.get("help")))
 
+    def __getattr__(self, name):
+        return getattr(self.fake, name)
+
 
 class FakeStreamlit:
-    def __init__(self, upload=None, bucket="hour"):
+    def __init__(self, upload=None, bucket="hour", **choices):
         self.upload = upload
         self.bucket = bucket
+        self.choices = choices  # what the person picked: Severity, Class, filter_ip, address, time
         self.calls = []
 
     def _record(self, name, *args, **kwargs):
@@ -76,7 +84,31 @@ class FakeStreamlit:
 
     def columns(self, count):
         self.calls.append(("columns", count))
-        return [Column(self.calls) for _ in range(count)]
+        return [Column(self) for _ in range(count)]
+
+    def success(self, text):
+        self.calls.append(("success", text))
+
+    def multiselect(self, label, options, **kwargs):
+        options = list(options)
+        shown = tuple(kwargs["format_func"](option) for option in options)
+        self.calls.append(("multiselect", label, shown, kwargs["key"]))
+        return self.choices.get(label, [])
+
+    def selectbox(self, label, options, **kwargs):
+        options = list(options)
+        shown = tuple(kwargs["format_func"](o) for o in options) if "format_func" in kwargs else ()
+        self.calls.append(("selectbox", label, tuple(options), shown, kwargs["key"]))
+        return self.choices.get(kwargs["key"].split(":")[0])  # "filter_ip" or "address"
+
+    def slider(self, label, **kwargs):
+        self.calls.append(
+            ("slider", label, kwargs["min_value"], kwargs["max_value"], kwargs["step"])
+        )
+        return self.choices.get("time", kwargs["value"])
+
+    def dataframe(self, table, **kwargs):
+        self.calls.append(("dataframe", table))
 
     def names(self):
         return [call[0] for call in self.calls]
@@ -85,8 +117,8 @@ class FakeStreamlit:
         return [call[1:] for call in self.calls if call[0] == name]
 
 
-def run(upload, bucket="hour"):
-    fake = FakeStreamlit(upload, bucket)
+def run(upload, bucket="hour", **choices):
+    fake = FakeStreamlit(upload, bucket, **choices)
     show_page(fake)
     return fake
 
@@ -184,7 +216,7 @@ class TestCharts:
         positions = [i for i, n in enumerate(names) if n in ("bar_chart", "line_chart")]
         assert [names[i] for i in positions] == ["bar_chart", "line_chart", "bar_chart"]
         assert [names[i - 1] for i in positions] == ["subheader"] * 3  # no chart without a title
-        assert [t[0] for t in fake.of("subheader")] == [
+        assert [t[0] for t in fake.of("subheader")][:3] == [
             "Responses by status class",
             "Traffic over time",
             "Most requested paths",
@@ -249,9 +281,8 @@ class TestCharts:
         text = GOOD + GOOD.replace("2026", "1970")
         fake = run(Upload(text.encode()), "minute")
         names = fake.names()
-        assert fake.of("caption") == [
-            ("Quiet periods are not listed because the log covers too long a time.",)
-        ]
+        note = ("caption", "Quiet periods are not listed because the log covers too long a time.")
+        assert fake.of("caption")[0] == note[1:]
         assert (
             names.index("line_chart")
             < names.index("caption")
@@ -259,4 +290,4 @@ class TestCharts:
         )
 
     def test_a_normal_range_has_no_note(self, fake):
-        assert "caption" not in fake.names()
+        assert not any("Quiet periods" in c[0] for c in fake.of("caption"))

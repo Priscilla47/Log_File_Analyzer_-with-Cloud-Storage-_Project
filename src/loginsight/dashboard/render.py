@@ -7,8 +7,8 @@ file that imports Streamlit and does nothing but hand it over.
 
 from typing import Any
 
-from loginsight.dashboard import data
-from loginsight.reporting.report import GAPS_NOTE
+from loginsight.dashboard import data, filters
+from loginsight.reporting.report import GAPS_NOTE, Report
 
 
 def _charts(st: Any, charts: data.Charts) -> None:
@@ -46,6 +46,67 @@ def _charts(st: Any, charts: data.Charts) -> None:
     )
 
 
+def _detections(st: Any, report: Report, scope: str) -> None:
+    """The detections under four filters, each value with the number of detections it has."""
+    st.subheader("Detections")
+    everything = report.detections
+    if not everything:
+        st.success("No attacks were detected in this log.")
+        return
+    severity_counts = filters.severity_counts(everything)
+    label_counts = filters.label_counts(everything)
+    ip_counts = filters.ip_counts(everything)
+    left, middle, right = st.columns(3)
+    severities = left.multiselect(
+        "Severity",
+        list(severity_counts),
+        format_func=lambda severity: f"{severity} ({severity_counts[severity]})",
+        key=f"filter_severity:{scope}",
+        placeholder="All severities",
+    )
+    labels = middle.multiselect(
+        "Class",
+        list(label_counts),
+        format_func=lambda label: f"{label} ({label_counts[label]})",
+        key=f"filter_class:{scope}",
+        placeholder="All classes",
+    )
+    ip = right.selectbox(
+        "Address",
+        list(ip_counts),
+        index=None,
+        format_func=lambda address: f"{address} ({ip_counts[address]})",
+        key=f"filter_ip:{scope}",
+        placeholder="All addresses",
+    )
+    start = end = None
+    full = filters.time_bounds(everything)
+    if full is not None:
+        chosen = st.slider(
+            "Time range (UTC)",
+            min_value=full[0],
+            max_value=full[1],
+            value=full,
+            step=filters.SLIDER_STEP,
+            format="YYYY-MM-DD HH:mm:ss",
+            key=f"filter_time:{scope}",
+        )
+        start, end = filters.range_to_filter(full, tuple(chosen))
+    shown = filters.filter_detections(
+        everything,
+        severities=severities or None,
+        labels=labels or None,
+        ip=ip,
+        start=start,
+        end=end,
+    )
+    st.caption(f"Showing {len(shown)} of {len(everything)} detections.")
+    if not shown:
+        st.info("No detection matches these filters.")
+        return
+    st.dataframe(filters.detections_table(shown), hide_index=True)
+
+
 def show_page(st: Any) -> None:
     """Draw the whole page with ``st``, the Streamlit module (or anything with its calls)."""
     st.set_page_config(page_title=data.APP_TITLE, layout="wide")
@@ -80,3 +141,7 @@ def show_page(st: Any) -> None:
         st.text(fact)
     if outcome.charts is not None:
         _charts(st, outcome.charts)
+    report = outcome.report
+    if report is not None and report.summary.total_requests:
+        scope = upload.file_id
+        _detections(st, report, scope)
