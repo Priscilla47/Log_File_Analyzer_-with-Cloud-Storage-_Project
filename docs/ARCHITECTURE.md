@@ -51,7 +51,7 @@ pattern = '''regular expression'''
 field = "target"   # optional: "target" (path and query, the default), "user_agent" or "referer"
 ```
 
-Most rules read the request path and query string. A rule can read the user agent or the referer instead (`field`); the text is normalised the same way, a request without that header is never matched, and the evidence shows the field name and its value. One built-in rule does: `cmdi-shellshock`, which looks for a bash function definition (`() { :;};`) in the user agent.
+Most rules read the request path and query string. A rule can read the user agent or the referer instead (`field`); the text is normalised the same way, a request without that header is never matched, and the evidence shows the field name and its value. One built-in rule does: `cmdi-shellshock`, which looks for a bash function definition (`() { :;};`) in the user agent. The 2,048-character cut applies to these fields too, so a user agent padded beyond it hides a payload, and the rule only reads a function body of up to 80 characters; both limits are pinned by tests.
 
 The loader checks every rule (known label, known severity, a pattern that compiles and is under 500 characters, unique ids) and reports all problems together, naming the rule. To add a rule, add an entry and a case in `tests/detection/rule_cases.toml` (requests it must match and requests it must leave alone); a test fails if a rule has no case.
 

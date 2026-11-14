@@ -526,4 +526,7 @@ no_match = [
   "curl/8.0",
   "my-app () {build} v2",
   "Mozilla/5.0 () {x} compatible",
+  "Mozilla/5.0 () {x} compatible; bot",
+  "Foo () { x } bar; baz",
+  "my-app () {build}\tv2; linux",
 ]

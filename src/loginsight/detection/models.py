@@ -22,11 +22,11 @@ SIGNATURE_LABELS = (
 BEHAVIOURAL_LABELS = ("brute_force", "scanner")
 LABELS = SIGNATURE_LABELS + BEHAVIOURAL_LABELS
 
-# Evidence quoted from a log line is cut to this many characters.
 # The part of a log entry a signature rule reads: the request path with its query string, the
 # user agent, or the referer.
 FIELDS = ("target", "user_agent", "referer")
 
+# Evidence quoted from a log line is cut to this many characters.
 MAX_EVIDENCE_LENGTH = 200
 
 

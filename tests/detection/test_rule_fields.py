@@ -8,7 +8,7 @@ import pytest
 from loginsight.detection import RuleSet, Severity, detect, load_rules
 from loginsight.detection.models import FIELDS, SignatureRule
 from loginsight.detection.ruleset import RulesError, parse_rules
-from loginsight.detection.signatures import detect_signatures
+from loginsight.detection.signatures import MAX_TARGET_LENGTH, detect_signatures
 from loginsight.parsing.models import LogEntry
 
 WHEN = datetime(2026, 10, 10, 10, 0, 0, tzinfo=timezone.utc)
@@ -162,7 +162,8 @@ class TestTheEngine:
     def test_the_whole_pipeline_merges_two_rules_on_one_request(self):
         rules = RuleSet(signatures=(rule("target", "t-rule"), rule("user_agent", "ua-rule")))
         (found,) = detect([entry("/evil", user_agent="evil")], rules)
-        assert found.also_matched in (("ua-rule",), ("t-rule",))
+        # equally serious: the rule that comes first in the rules file is the detection
+        assert (found.rule_id, found.also_matched) == ("t-rule", ("ua-rule",))
 
     def test_a_value_is_normalised_once_however_many_rules_read_it(self, monkeypatch):
         from loginsight.detection import signatures
@@ -225,6 +226,8 @@ class TestShellshock:
             "{ :;};",
             "my-app (build {17}); linux",
             "my-app () {build} v2",
+            "Mozilla/5.0 () {x} compatible; bot",
+            "Foo () { x } bar; baz",
             "",
         ],
     )
@@ -232,9 +235,22 @@ class TestShellshock:
         assert detect([entry("/", user_agent=agent or None)]) == []
 
     def test_it_does_not_fire_on_the_same_text_in_the_path(self):
-        assert detect([entry("/?x=" + SHELLSHOCK)]) == [] or all(
-            d.rule_id != "cmdi-shellshock" for d in detect([entry("/?x=" + SHELLSHOCK)])
-        )
+        # a path rule may still fire on `;` or `id`, but the user-agent rule never reads the path
+        assert all(d.rule_id != "cmdi-shellshock" for d in detect([entry("/?x=" + SHELLSHOCK)]))
+
+    def test_it_does_not_read_the_referer(self):
+        assert detect([entry("/", referer=SHELLSHOCK)]) == []
+
+    def test_an_attack_after_the_first_2048_characters_of_the_agent_is_not_seen(self):
+        # a documented limit, the same as for the path: see signatures.py
+        padded = "A" * MAX_TARGET_LENGTH + SHELLSHOCK
+        assert detect([entry("/", user_agent=padded)]) == []
+        assert detect([entry("/", user_agent="A" * (MAX_TARGET_LENGTH - 40) + SHELLSHOCK)])
+
+    def test_a_function_body_of_more_than_80_characters_is_not_seen(self):
+        # a documented limit that keeps the pattern fast; the classic payloads are much shorter
+        assert detect([entry("/", user_agent="() { " + "a" * 100 + ";}; id")]) == []
+        assert detect([entry("/", user_agent="() { " + "a" * 60 + ";}; id")])
 
     def test_the_evidence_shows_the_user_agent(self):
         (found,) = detect([entry("/", user_agent=SHELLSHOCK)])

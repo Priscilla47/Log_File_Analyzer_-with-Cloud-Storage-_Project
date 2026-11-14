@@ -1,13 +1,16 @@
 """Signature detection: match each request against the rules, after undoing the disguises.
 
 Attackers hide patterns with URL encoding, so a rule is not matched against the request as
-logged but against a normalised version of its path and query string (see :func:`normalise`).
-Only the path and query are looked at, never the user agent or the referer.
+logged but against a normalised version of the text it reads (see :func:`normalise`). Most
+rules read the path and query string; a rule with a ``field`` reads the user agent or the
+referer instead, and nothing else of a request is looked at.
 
 Limits worth knowing:
 
-* Only the first :data:`MAX_TARGET_LENGTH` characters of a request are examined, which bounds
-  the work done per line. An attack that starts after that point is not seen.
+* Only the first :data:`MAX_TARGET_LENGTH` characters of the text a rule reads (the request,
+  the user agent or the referer) are examined, which bounds the work done per line. An attack
+  that starts after that point is not seen, so padding a user agent with 2,048 characters
+  hides a payload from the Shellshock rule.
 * Up to :data:`MAX_DECODE_PASSES` layers of percent-encoding are removed. Older tricks such as
   overlong UTF-8 (``%c0%ae`` for a dot) and IIS-style ``%u0041`` are not decoded.
 * Patterns are ordinary regular expressions, which can be slow on hostile input if written
