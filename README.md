@@ -43,6 +43,7 @@ pytest          # fast tests
 pytest -m slow  # long-running checks
 pytest -m e2e   # runs the real command in new processes (about a minute)
 ruff check .    # lint
+mypy src        # types
 ```
 
 Optionally, run the same checks automatically before every commit:

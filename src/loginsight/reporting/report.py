@@ -144,6 +144,7 @@ def _escape(text: str) -> str:
 
 
 def periods(count: int) -> str:
+    """``count`` with the right singular or plural of "period": ``1 period``, ``3 periods``."""
     return f"{count} period" + ("" if count == 1 else "s")
 
 
@@ -152,6 +153,7 @@ def _time(moment: datetime | None) -> str:
 
 
 def human_bytes(count: int) -> str:
+    """A byte count in the largest fitting unit: ``512 B``, ``2.4 KiB``, ``1.0 MiB``..."""
     size = float(count)
     for unit in ("B", "KiB", "MiB", "GiB"):
         if size < 1024:

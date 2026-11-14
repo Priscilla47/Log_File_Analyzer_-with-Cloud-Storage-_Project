@@ -9,13 +9,16 @@ The default rules ship inside the package as ``rules/default.toml``.
 """
 
 import re
+import sys
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
 
-try:  # the standard library reads TOML from Python 3.11
+# The standard library reads TOML from Python 3.11. Which branch runs depends on the Python
+# version, so neither counts as missed in the coverage of the other.
+if sys.version_info >= (3, 11):  # pragma: no cover
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - only on Python 3.10
+else:  # pragma: no cover
     import tomli as tomllib
 
 from loginsight.detection.models import BEHAVIOURAL_LABELS, LABELS, Severity, SignatureRule
@@ -33,7 +36,7 @@ _BEHAVIOUR_TABLES = ("brute_force", "scanner")
 class RulesError(ValueError):
     """A rules file could not be loaded. ``problems`` lists every mistake that was found."""
 
-    def __init__(self, source: str, problems: list[str]):
+    def __init__(self, source: str, problems: list[str]) -> None:
         self.source = source
         self.problems = list(problems)
         count = len(self.problems)
@@ -99,7 +102,7 @@ def _build_signature(entry: dict, number: int, seen: dict, problems: list[str]):
     owner = (
         f"signature {rule_id!r}" if isinstance(rule_id, str) and rule_id else f"signature #{number}"
     )
-    found = []  # this rule's own problems, so a bad rule is not built
+    found: list[str] = []  # this rule's own problems, so a bad rule is not built
 
     _unknown_keys(entry, _SIGNATURE_KEYS, owner, found)
     for key in _SIGNATURE_KEYS:
@@ -151,7 +154,7 @@ def _build_signature(entry: dict, number: int, seen: dict, problems: list[str]):
                 found.append(f"{owner}: pattern is not a valid regular expression: {error}")
 
     problems.extend(found)
-    if found:
+    if found or severity is None:  # a missing severity is already in ``found``
         return None
     return SignatureRule(
         id=text["id"],
@@ -274,7 +277,9 @@ def load_rules(path: str | Path | None = None) -> RuleSet:
     any invalid rule.
     """
     if path is None:
-        resource = resources.files("loginsight.detection").joinpath("rules", "default.toml")
+        resource = (
+            resources.files("loginsight.detection").joinpath("rules").joinpath("default.toml")
+        )
         return parse_rules(resource.read_text(encoding="utf-8"), source="the default rules")
 
     source = str(path)

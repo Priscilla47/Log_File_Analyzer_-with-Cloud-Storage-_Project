@@ -435,7 +435,6 @@ class TestSkippedLineWarning:
         _, out, err = run(capsys, "detect", log(self.lines(1, 1)), "--output", tmp_path)
         assert "loginsight: warning" in err and "loginsight: warning" not in out
 
-
     def test_parse_statistics_are_always_shown(self, capsys, log):
         out = run(capsys, "detect", log(self.lines(3, 1)))[1]
         assert "Lines: 4 read, 3 parsed, 1 skipped (75.0% parsed)" in out
@@ -593,3 +592,36 @@ class TestPackaging:
         assert "parse_file" not in source
         assert "Temporary exception" not in source
         assert "LocalStorage" in source
+
+
+class TestExitOfTheParser:
+    """``main`` turns whatever ``SystemExit`` the argument parser raises into a status."""
+
+    @pytest.mark.parametrize(
+        ("raised", "expected"),
+        [(0, 0), (2, 2), (None, 0), ("a usage message", 2)],
+    )
+    def test_the_status_of_an_exit(self, monkeypatch, capsys, raised, expected):
+        class Parser:
+            def parse_args(self, argv):
+                raise SystemExit(raised)
+
+        monkeypatch.setattr(cli, "build_parser", lambda: Parser())
+        assert main([]) == expected
+        capsys.readouterr()
+
+    def test_a_message_is_printed_not_lost(self, monkeypatch, capsys):
+        class Parser:
+            def parse_args(self, argv):
+                raise SystemExit("a usage message")
+
+        monkeypatch.setattr(cli, "build_parser", lambda: Parser())
+        assert main([]) == 2
+        captured = capsys.readouterr()
+        assert captured.err == "loginsight: a usage message\n" and captured.out == ""
+
+    def test_help_and_version_still_exit_zero_and_a_bad_option_two(self, capsys):
+        assert main(["--help"]) == 0
+        assert main(["--version"]) == 0
+        assert main(["analyze", "--nonsense"]) == 2
+        capsys.readouterr()
