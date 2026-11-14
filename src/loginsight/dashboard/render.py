@@ -8,6 +8,8 @@ file that imports Streamlit and does nothing but hand it over.
 from typing import Any
 
 from loginsight.dashboard import data, filters
+from loginsight.dashboard.profile import ip_profile
+from loginsight.parsing.models import LogEntry
 from loginsight.reporting.report import GAPS_NOTE, Report
 
 
@@ -107,6 +109,39 @@ def _detections(st: Any, report: Report, scope: str) -> None:
     st.dataframe(filters.detections_table(shown), hide_index=True)
 
 
+def _address(st: Any, report: Report, entries: list[LogEntry], scope: str) -> None:
+    """Everything one chosen address did."""
+    st.subheader("One address")
+    ip = st.selectbox(
+        "Address",
+        data.ip_choices(report),
+        index=None,
+        key=f"address:{scope}",
+        placeholder="Choose an address",
+        help=f"Addresses with detections first, then the busiest, at most {data.MAX_IP_CHOICES}.",
+    )
+    if ip is None:
+        st.caption("Choose an address to see everything it did.")
+        return
+    profile = ip_profile(entries, report.detections, ip)
+    if not profile.known:
+        st.info("This address does not appear in the log.")
+        return
+    cards = data.profile_cards(profile)
+    for column, card in zip(st.columns(len(cards)), cards, strict=True):
+        column.metric(card.label, card.value, help=card.help)
+    left, right = st.columns(2)
+    left.caption("Responses it received")
+    left.dataframe(data.profile_status_table(profile), hide_index=True)
+    right.caption("Paths it asked for")
+    right.dataframe(data.profile_paths_table(profile), hide_index=True)
+    if profile.detections:
+        st.caption("Detections that name this address")
+        st.dataframe(filters.detections_table(profile.detections), hide_index=True)
+    else:
+        st.caption("No detections name this address.")
+
+
 def show_page(st: Any) -> None:
     """Draw the whole page with ``st``, the Streamlit module (or anything with its calls)."""
     st.set_page_config(page_title=data.APP_TITLE, layout="wide")
@@ -145,3 +180,4 @@ def show_page(st: Any) -> None:
     if report is not None and report.summary.total_requests:
         scope = upload.file_id
         _detections(st, report, scope)
+        _address(st, report, outcome.entries, scope)

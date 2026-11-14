@@ -7,6 +7,9 @@ without a browser. It never imports Streamlit. The numbers come from the same
 
 from dataclasses import dataclass, field
 
+from loginsight.dashboard.filters import ip_counts
+from loginsight.dashboard.profile import IpProfile
+from loginsight.parsing.models import LogEntry
 from loginsight.reporting.report import Report, human_bytes
 from loginsight.reporting.text import printable
 from loginsight.workflow import NothingReadError, analyze_text
@@ -24,6 +27,10 @@ UPLOAD_LIMIT_BYTES = UPLOAD_LIMIT_MB * 1024 * 1024
 # The periods the traffic can be grouped by, and the one shown first.
 BUCKETS = ("minute", "hour", "day")
 DEFAULT_BUCKET = "hour"
+
+# At most this many addresses are offered for the per-address view, so a log with tens of
+# thousands of addresses cannot make the list unusable.
+MAX_IP_CHOICES = 200
 
 # A path longer than this is shortened in the chart so the bars stay readable.
 MAX_PATH_LABEL = 60
@@ -79,6 +86,7 @@ class Outcome:
     notice: str | None = None
     error: str | None = None
     charts: Charts | None = None
+    entries: list[LogEntry] = field(default_factory=list)
 
 
 def overview(report: Report) -> list[Card]:
@@ -206,6 +214,7 @@ def analyze_upload(
         warnings=analysis.warnings,
         notice=None if has_requests else "The file has no requests in it.",
         charts=_charts(report) if has_requests else None,
+        entries=analysis.entries,
     )
 
 
@@ -219,6 +228,17 @@ def _charts(report: Report) -> Charts:
     )
 
 
+def ip_choices(report: Report, *, limit: int = MAX_IP_CHOICES) -> list[str]:
+    """The addresses offered for a closer look, at most ``limit`` of them.
+
+    First those with detections (the most detections first), then the busiest addresses of the
+    report, without repeats.
+    """
+    chosen = dict.fromkeys(ip_counts(report.detections))
+    chosen.update(dict.fromkeys(ip for ip, _ in report.summary.top_ips))
+    return list(chosen)[:limit]
+
+
 def limit_text(count: int, *, decimals: bool = True) -> str:
     """A byte count in megabytes for the messages about the size limit.
 
@@ -230,3 +250,38 @@ def limit_text(count: int, *, decimals: bool = True) -> str:
         tenths = -(-count * 10 // megabyte)  # a ceiling, in whole numbers
         return f"{tenths / 10:.1f} MB"
     return f"{round(count / megabyte, 1):g} MB"
+
+
+def profile_cards(profile: IpProfile) -> list[Card]:
+    """The headline numbers of one address, in the order the page shows them."""
+
+    def moment(value) -> str:
+        return value.strftime("%Y-%m-%d %H:%M:%S UTC") if value else "-"
+
+    return [
+        Card(label="Requests", value=str(profile.requests), help="Requests this address sent."),
+        Card(label="First seen", value=moment(profile.first_seen), help="Its first request."),
+        Card(label="Last seen", value=moment(profile.last_seen), help="Its last request."),
+        Card(
+            label="Detections",
+            value=str(len(profile.detections)),
+            help="Detections that name this address.",
+        ),
+    ]
+
+
+def profile_status_table(profile: IpProfile) -> dict[str, list]:
+    """The responses this address got, by status class (the classes it got only)."""
+    names = [name for name, count in profile.status_classes.items() if count]
+    return {"Status class": names, "Requests": [profile.status_classes[name] for name in names]}
+
+
+def profile_paths_table(profile: IpProfile) -> dict[str, list]:
+    """The paths this address asked for, busiest first, then one row for all the others."""
+    paths = [_label(path) for path, _ in profile.top_paths]
+    counts = [count for _, count in profile.top_paths]
+    if profile.other_requests:
+        others = profile.distinct_paths - len(profile.top_paths)
+        paths.append(f"(other paths: {others})")
+        counts.append(profile.other_requests)
+    return {"Path": paths, "Requests": counts}

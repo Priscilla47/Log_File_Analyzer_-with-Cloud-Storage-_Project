@@ -106,3 +106,27 @@ def test_hostile_evidence_is_shown_as_text_and_the_page_survives():
     evidence = list(app.dataframe[0].value["Evidence"])
     assert evidence and all("\x1b" not in text for text in evidence)
     assert not app.markdown or all("<script>" not in m.value for m in app.markdown)
+
+
+def test_the_address_view_shows_one_address():
+    app = upload("demo.log", DEMO)
+    assert app.subheader[-1].value == "One address"
+    assert "Choose an address to see everything it did." in [c.value for c in app.caption]
+    top = data.ip_choices(data.analyze_upload(DEMO, "d").report)[0]
+    app.selectbox[-1].select(top).run()
+    assert not app.exception
+    shown = {m.label: m.value for m in app.metric}
+    assert {"Requests", "First seen", "Last seen", "Detections"} <= set(shown)
+    assert int(shown["Requests"]) >= 1
+
+
+def test_each_address_request_count_adds_up_to_the_total_on_the_cards():
+    base = upload("demo.log", DEMO)
+    total = int({m.label: m.value for m in base.metric}["Requests"])
+    choices = base.selectbox[-1].options
+    seen = 0
+    for choice in choices[:3]:
+        app = upload("demo.log", DEMO)
+        app.selectbox[-1].select(choice).run()
+        seen += int([m.value for m in app.metric if m.label == "Requests"][-1])
+    assert 0 < seen <= total

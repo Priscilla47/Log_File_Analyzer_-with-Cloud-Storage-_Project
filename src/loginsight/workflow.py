@@ -5,12 +5,12 @@ about a number: the format detection, the parsing, the checks on how much was re
 detection rules and the report all happen here, once.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loginsight.detection import Severity, detect, load_rules
 from loginsight.detection.ruleset import RuleSet
 from loginsight.parsing.detect import detect_log_format
-from loginsight.parsing.models import ParseStats
+from loginsight.parsing.models import LogEntry, ParseStats
 from loginsight.parsing.parser import parse_text
 from loginsight.reporting.report import Report, build_report
 
@@ -38,10 +38,15 @@ class NothingReadError(ValueError):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Analysis:
-    """A report and the warnings that go with it (text for the person reading the result)."""
+    """A report, the warnings that go with it and the entries it was built from.
+
+    ``warnings`` is text for the person reading the result. ``entries`` are the parsed requests
+    in log order, kept so an interface can look at one address without reading the file again.
+    """
 
     report: Report
     warnings: list[str]
+    entries: list[LogEntry] = field(default_factory=list)
 
 
 def analyze_text(
@@ -82,4 +87,4 @@ def analyze_text(
         bucket=bucket,
         log_format=log_format,
     )
-    return Analysis(report=report, warnings=warnings)
+    return Analysis(report=report, warnings=warnings, entries=result.entries)
