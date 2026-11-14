@@ -68,7 +68,7 @@ That number comes from synthetic logs made by a simple generator. It shows that 
 - `charts.py`: the three PNG charts (status classes, traffic, top paths), drawn with matplotlib's object API so there is no global state.
 - `text.py`: the plain-text views the command line prints. Control characters from the log are shown as visible escapes so a log line cannot send commands to a terminal.
 
-The JSON layout is `tool`, `source` (name and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
+The JSON layout is `tool`, `source` (name, log format and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
 
 ### Interfaces
 - **CLI (`cli.py`, `__main__.py`):** `loginsight analyze` and `loginsight detect`, with a choice of output format. Exit code 0 is success, 1 a problem with a file, 2 wrong usage.
