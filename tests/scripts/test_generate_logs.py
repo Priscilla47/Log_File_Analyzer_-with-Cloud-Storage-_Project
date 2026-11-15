@@ -24,6 +24,9 @@ ALL_LABELS = {
     "path_traversal",
     "command_injection",
     "sensitive_file_probe",
+    "ssrf",
+    "template_injection",
+    "file_inclusion",
     "brute_force",
     "scanner",
 }
@@ -205,7 +208,7 @@ def test_kind_matches_the_label(big):
         assert item["kind"] == expected
 
 
-def test_all_seven_attack_classes_appear(big):
+def test_all_ten_attack_classes_appear(big):
     assert {item["label"] for item in big[1]} == ALL_LABELS
 
 

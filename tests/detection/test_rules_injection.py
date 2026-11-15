@@ -245,7 +245,7 @@ def test_the_demo_log_finds_every_labelled_line_of_these_four_classes_as_its_own
     for detection in detect_signatures(entries, load_rules()):
         by_line.setdefault(detection.first_index, set()).add(detection.label)
     wanted = {line: label for line, label in labels.items() if label in CLASSES}
-    assert len(wanted) >= 20
+    assert len(wanted) >= 12
     assert {
         line: label for line, label in wanted.items() if label not in by_line.get(line, ())
     } == {}

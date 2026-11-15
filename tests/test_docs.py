@@ -154,6 +154,9 @@ LABEL_WORDS = {
     "path_traversal": "path traversal",
     "command_injection": "command injection",
     "sensitive_file_probe": "sensitive-file probes",
+    "ssrf": "SSRF",
+    "template_injection": "template injection",
+    "file_inclusion": "file inclusion",
 }
 
 

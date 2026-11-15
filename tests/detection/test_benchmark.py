@@ -410,6 +410,10 @@ EXERCISED = {
     "probe-vcs-dir": "sensitive_file_probe",
     "probe-backup-archive": "sensitive_file_probe",
     "probe-diagnostics": "sensitive_file_probe",
+    "ssrf-cloud-metadata": "ssrf",
+    "ssti-arithmetic-probe": "template_injection",
+    "ssti-engine-internals": "template_injection",
+    "rfi-script-on-address": "file_inclusion",
 }
 
 

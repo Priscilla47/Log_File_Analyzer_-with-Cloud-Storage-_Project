@@ -31,7 +31,7 @@ Pure functions that take log entries and return statistics. They do no file or n
 ### Detection (`detection/`)
 Classifies suspicious activity with explainable rules. There are two kinds:
 
-- **Signature rules** (`signatures.py`) match known attack patterns in the request path and query string: SQL injection, cross-site scripting, path traversal, command injection and probes for sensitive files such as `/.env`.
+- **Signature rules** (`signatures.py`) match known attack patterns in the request path and query string: SQL injection, cross-site scripting, path traversal, command injection, probes for sensitive files such as `/.env`, server-side request forgery (a cloud metadata address in a request), template injection (`{{7*7}}`) and remote file inclusion (a script on a bare IP address in a parameter).
 - **Behavioural rules** (`behaviour.py`) look across requests from one IP address over a time window: many failed logins are brute force, and many different missing pages, or a known scanning tool in the user agent, are scanning.
 
 `models.py` defines `Detection` (rule, label, severity, address, time, position, count, evidence), `Severity` and `SignatureRule`. `ruleset.py` loads and checks the rules file. `pipeline.py` has `detect()`, the one function the rest of the code calls.
@@ -39,7 +39,7 @@ Classifies suspicious activity with explainable rules. There are two kinds:
 Every detection says which rule matched and quotes its evidence, so a result can always be explained and checked.
 
 #### The rules file
-Rules are data in `detection/rules/default.toml`, not code. There are 27 signature rules (6 SQL injection, 5 XSS, 4 path traversal, 4 command injection, 8 sensitive-file probes) and the settings of the two behavioural rules. A signature rule looks like this:
+Rules are data in `detection/rules/default.toml`, not code. There are 31 signature rules (6 SQL injection, 5 XSS, 4 path traversal, 4 command injection, 8 sensitive-file probes, 1 SSRF, 2 template injection, 1 file inclusion) and the settings of the two behavioural rules. A signature rule looks like this:
 
 ```toml
 [[signature]]
@@ -58,9 +58,9 @@ Before a pattern is matched, the path and query are **normalised**: cut to 2048 
 A request can match several rules (`UNION SELECT` inside a `<script>` tag, for example). `detect()` keeps **one detection per request**: the most serious rule wins, ties go to the rule that comes first in the rules file, and the others are named in `also_matched`. Behavioural detections describe an address over time, so they are never merged with a signature detection, even on the same line. The result is sorted by severity (highest first), then position, then rule id, so the same input always gives the same output.
 
 #### Measuring quality
-`tests/detection/benchmark.py` scores the detections against the labels the sample generator writes, as **recall** (how many labelled attacks were found) and **precision** (how many detections were real) for each of the seven attack classes. Signature classes are scored per line, behavioural ones per burst. The tests require at least 0.95 for both on several generated logs and on the demo log, and require that clean logs raise nothing. The measured score is currently 1.000 for every class.
+`tests/detection/benchmark.py` scores the detections against the labels the sample generator writes, as **recall** (how many labelled attacks were found) and **precision** (how many detections were real) for each of the ten attack classes. Signature classes are scored per line, behavioural ones per burst. The tests require at least 0.95 for both on several generated logs and on the demo log, and require that clean logs raise nothing. The measured score is currently 1.000 for every class.
 
-That number comes from synthetic logs made by a simple generator. It shows that the rules do what they were written to do and that nothing has regressed. It is **not** a promise about real traffic. The benchmark also cannot see rules the generator never exercises (13 of the 27); those are covered by the per-rule cases.
+That number comes from synthetic logs made by a simple generator. It shows that the rules do what they were written to do and that nothing has regressed. It is **not** a promise about real traffic. The benchmark also cannot see rules the generator never exercises (13 of the 31); those are covered by the per-rule cases.
 
 ### Reporting (`reporting/`)
 - `report.py`: `build_report` gathers statistics, traffic over time and detections into a `Report`; `render_json` and `render_markdown` turn it into text. It is pure: no file access, no clock, no absolute paths, so the same log always gives byte-identical output. Text taken from the log is escaped in Markdown so it cannot break a table or add formatting.

