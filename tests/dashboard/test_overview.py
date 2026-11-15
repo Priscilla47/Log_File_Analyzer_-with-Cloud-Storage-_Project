@@ -26,13 +26,18 @@ def cards(outcome):
     return {card.label: card for card in outcome.cards}
 
 
-MB = 1024 * 1024
+MB = 1_000_000  # Streamlit's megabyte: decimal, as its own upload limit counts
 
 
 class TestTheLimit:
     def test_the_limit_is_fifty_megabytes(self):
         assert UPLOAD_LIMIT_MB == 50
-        assert UPLOAD_LIMIT_BYTES == 50 * 1024 * 1024
+        assert UPLOAD_LIMIT_BYTES == 50_000_000
+
+    def test_the_limit_is_in_the_megabytes_streamlit_counts(self):
+        # a file of 50 MiB (52.4 MB) is over the limit: Streamlit's uploader refuses it too
+        outcome = analyze_upload(b"x" * (50 * 1024 * 1024), "big.log")
+        assert outcome.report is None and "52.5 MB" in outcome.error
 
     def test_a_file_of_exactly_the_limit_is_accepted(self):
         raw = (GOOD * 3).encode().ljust(UPLOAD_LIMIT_BYTES, b"\n")  # blank lines are ignored

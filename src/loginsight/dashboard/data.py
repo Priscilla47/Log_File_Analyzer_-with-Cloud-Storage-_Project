@@ -21,8 +21,12 @@ EMPTY_MESSAGE = (
 )
 
 # Bigger logs are better read with the command line; this also bounds the memory one page uses.
+# Streamlit's ``maxUploadSize`` counts decimal megabytes (1 MB = 1,000,000 bytes), so this does
+# too. Counted in MiB the limit would be looser than the uploader's, which refuses a file of
+# 52.1 MB before our own message can be shown.
 UPLOAD_LIMIT_MB = 50
-UPLOAD_LIMIT_BYTES = UPLOAD_LIMIT_MB * 1024 * 1024
+BYTES_PER_MB = 1_000_000
+UPLOAD_LIMIT_BYTES = UPLOAD_LIMIT_MB * BYTES_PER_MB
 
 
 # The periods the traffic can be grouped by, and the one shown first.
@@ -305,7 +309,7 @@ def limit_text(count: int, *, decimals: bool = True) -> str:
     With ``decimals`` it is rounded **up** to a tenth (``50.1 MB``), so a file just over a
     limit of 50 MB never reads as "50.0 MB"; without, it is the exact limit (``50 MB``).
     """
-    megabyte = 1024 * 1024
+    megabyte = BYTES_PER_MB
     if decimals:
         tenths = -(-count * 10 // megabyte)  # a ceiling, in whole numbers
         return f"{tenths / 10:.1f} MB"

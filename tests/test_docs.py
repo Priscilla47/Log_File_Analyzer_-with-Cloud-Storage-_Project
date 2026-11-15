@@ -213,3 +213,23 @@ class TestImages:
     def test_the_image_finder_finds_images_and_not_links(self):
         found = self.IMAGE.findall("see [a](x.md) and ![a picture of a chart](p.png)")
         assert found == [("a picture of a chart", "p.png")]
+
+
+class TestPerformanceGuide:
+    text = (DOCS / "PERFORMANCE.md").read_text(encoding="utf-8")
+
+    def test_the_limit_it_states_is_the_one_the_dashboard_keeps(self):
+        from loginsight.dashboard.data import UPLOAD_LIMIT_BYTES, UPLOAD_LIMIT_MB
+
+        assert UPLOAD_LIMIT_BYTES == UPLOAD_LIMIT_MB * 1_000_000
+        assert f"{UPLOAD_LIMIT_MB} MB" in self.text and f"{UPLOAD_LIMIT_BYTES:,} bytes" in self.text
+
+    def test_it_is_linked_from_the_readme_and_the_usage_guide(self):
+        assert "docs/PERFORMANCE.md" in (ROOT / "README.md").read_text(encoding="utf-8")
+        assert "PERFORMANCE.md" in USAGE.read_text(encoding="utf-8")
+
+    def test_the_log_it_measured_is_under_the_limit(self):
+        from loginsight.dashboard.data import UPLOAD_LIMIT_BYTES
+
+        size = int(re.search(r"\*\*Log:\*\* ([\d,]+) bytes", self.text).group(1).replace(",", ""))
+        assert size < UPLOAD_LIMIT_BYTES
