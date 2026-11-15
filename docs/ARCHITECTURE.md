@@ -79,13 +79,16 @@ A small interface for reading and writing named data.
 - `base.py`: the `Storage` protocol (`read_text`, `write_bytes`, `list`, `exists`), the key rules (`check_key`: relative, `/`-separated, no `.` or `..`) and the errors `StorageError`, `MissingKeyError` and `InvalidKeyError`.
 - `local.py`: `LocalStorage`, which maps keys to files below a root folder, refuses anything that leads outside it (including through symbolic links), and writes atomically through a hidden temporary file.
 
-Cloud backends are added later by implementing the same protocol, with no change to the rest of the code. The tests run the same contract against every backend.
+- `s3.py`: `S3Storage`, the same protocol on an Amazon S3 bucket below an optional prefix. `boto3` is imported only when a client is first needed, so it is an optional extra; credentials come from the standard AWS places and are never read or kept here; every failure of the service becomes a `StorageError` with one readable message (a missing object a `MissingKeyError`); a write is one request, so it is atomic. See [CLOUD_STORAGE.md](CLOUD_STORAGE.md).
+- `locations.py`: the only place that tells a local path from an `s3://bucket/key` location, so the command line works with both without knowing the difference.
+
+A new backend is added by implementing the same protocol, with no change to the rest of the code. The tests run one contract against every backend (local, in-memory, S3 and S3 below a prefix; S3 is a mock, so no account is needed).
 
 ## Design decisions
 
 - **Rule-based detection, not machine learning.** Rules are readable, testable, need no training data, and every alert can be explained. Statistical anomaly detection may be added later as an optional extra.
 - **A pure core.** Parsing, analysis, detection and report building take data in and return data out. Only the writers and the command line touch the outside world.
-- **Storage behind an interface.** The tool works on local files today, and cloud storage becomes a new backend instead of a rewrite.
+- **Storage behind an interface.** The tool works on local files and on S3 buckets, and a further backend is a new class instead of a rewrite.
 - **Tolerant parsing.** Bad lines are counted and reported, so one corrupt line never stops an analysis.
 - **Reproducible output.** Reports hold no timestamps of their own, so they can be compared byte for byte.
 - **Synthetic sample data.** Demos and tests use generated logs with known attacks, which also lets detection quality be measured as precision and recall.

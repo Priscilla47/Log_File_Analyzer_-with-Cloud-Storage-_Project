@@ -20,12 +20,16 @@ dependencies = [
 loginsight = "loginsight.cli:main"
 
 [project.optional-dependencies]
+# Amazon S3 storage (see docs/CLOUD_STORAGE.md). Only the client calls used there are needed.
+s3 = ["boto3>=1.28"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.17.1,<0.18",
     "mypy>=1.10",
     "pre-commit>=3.5",
+    "boto3>=1.28",
+    "moto[s3]>=5.0",
 ]
 
 [tool.setuptools.packages.find]
