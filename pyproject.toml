@@ -20,20 +20,23 @@ dependencies = [
 loginsight = "loginsight.cli:main"
 
 [project.optional-dependencies]
-# The dashboard. The page was written and tested with Streamlit 1.66.1 (Python 3.11 and newer)
-# and 1.65.0 (the newest release that still installs on Python 3.10). The lower bound 1.40 is
-# not tested: it is where the range starts being plausible, and it should be raised to the
-# oldest release the tests actually pass on. The upper bound keeps a new major release, which
-# may change the API, from being installed unseen.
+# The dashboard. The lower bound 1.50 is the first Streamlit release that has every argument
+# the page passes (bar_chart(sort=...) arrived in 1.50; the page also needs selectbox(index=None)
+# and the placeholders of 1.27). It was checked by running the tests of the page against 1.50.0
+# (with the real signatures of every call, and a real server that starts and serves the page);
+# the behaviour of the page was checked with Streamlit's test helper on 1.65.0 (Python 3.10) and
+# 1.66.1 (Python 3.11 and newer), because the helper can only choose a file from 1.56. Nothing
+# between 1.50 and 1.65 other than 1.50.0 was run. The upper bound keeps a new major release,
+# which may change the API, from being installed unseen.
 dashboard = [
-    "streamlit>=1.40,<2",
+    "streamlit>=1.50,<2",
 ]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.17.1,<0.18",
     "mypy>=1.10",
-    "streamlit>=1.40,<2",
+    "streamlit>=1.50,<2",
     "pre-commit>=3.5",
 ]
 

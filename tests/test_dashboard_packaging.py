@@ -44,3 +44,17 @@ def test_the_reason_for_the_range_is_written_down():
 
 def test_the_app_file_is_part_of_the_package():
     assert (ROOT / "src" / "loginsight" / "dashboard" / "app.py").is_file()
+
+
+def test_the_lower_bound_is_the_release_the_page_needs():
+    # bar_chart(sort=...) is the newest argument the page passes: it arrived in Streamlit 1.50
+    # (found by reading the wheels of 1.48.0, 1.49.0 and 1.50.0), so an older release fails on
+    # the first chart. If the page stops using it, the bound may be lowered; not before.
+    (declared,) = PROJECT["optional-dependencies"]["dashboard"]
+    assert re.fullmatch(r"streamlit>=1\.50(\.\d+)?,<2", declared), declared
+
+
+def test_the_comment_says_what_was_and_was_not_tested():
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "1.50.0" in text and "1.65.0" in text and "1.66.1" in text
+    assert "not tested" not in text and "plausible" not in text

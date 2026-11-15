@@ -45,6 +45,8 @@ SAMPLES = Path(__file__).resolve().parents[2] / "data" / "samples"
 
 
 def upload(name, raw):
+    if not hasattr(AppTest, "file_uploader"):  # Streamlit's test helper learned it in 1.56
+        pytest.skip("this Streamlit's AppTest cannot choose a file (needs 1.56 or newer)")
     app = AppTest.from_file(str(launch.APP_FILE), default_timeout=30).run()
     app.file_uploader[0].upload(name, raw).run()
     return app
