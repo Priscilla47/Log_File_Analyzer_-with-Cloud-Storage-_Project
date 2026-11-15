@@ -111,7 +111,7 @@ Each detection answers: what, how bad, who, when and why.
 
 | Field | Meaning |
 | --- | --- |
-| `label` | the kind of attack: `sql_injection`, `xss`, `path_traversal`, `command_injection`, `sensitive_file_probe`, `brute_force` or `scanner` |
+| `label` | the kind of attack: `sql_injection`, `xss`, `path_traversal`, `command_injection`, `sensitive_file_probe`, `ssrf`, `template_injection`, `file_inclusion`, `brute_force` or `scanner` |
 | `severity` | `low`, `medium`, `high` or `critical` |
 | `rule_id` | the rule that matched, for example `sqli-union-select`; rules are in `src/loginsight/detection/rules/default.toml` |
 | `ip` | the address that sent the request |

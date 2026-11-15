@@ -121,7 +121,7 @@ class TestAnalyze:
         assert "Requests:     500" in out
         assert "Top paths" in out and "Top IP addresses" in out
         assert "Traffic per hour" in out
-        assert "Detections: 34" in out
+        assert "Detections: 35" in out
 
     def test_default_format_is_text(self, capsys):
         assert run(capsys, "analyze", DEMO) == run(capsys, "analyze", DEMO, "--format", "text")
@@ -151,7 +151,7 @@ class TestAnalyze:
         assert status == EXIT_OK and err == ""
         assert list(data) == ["tool", "source", "summary", "traffic", "detections"]
         assert data["summary"]["total_requests"] == 500
-        assert len(data["detections"]) == 34
+        assert len(data["detections"]) == 35
 
     def test_json_honours_top_and_bucket(self, capsys):
         data = json.loads(run(capsys, "analyze", DEMO, "--format", "json", "--top", "2",
@@ -181,14 +181,14 @@ class TestDetect:
     def test_lists_the_detections(self, capsys):
         status, out, err = run(capsys, "detect", DEMO)
         assert status == EXIT_OK and err == ""
-        assert "Detections: 34" in out
-        assert "SEVERITY" in out and "sqli-union-select" in out
+        assert "Detections: 35" in out
+        assert "SEVERITY" in out and "sqli-tautology" in out
 
     def test_json_is_valid_and_complete(self, capsys):
         status, out, _ = run(capsys, "detect", DEMO, "--format", "json")
         data = json.loads(out)
         assert status == EXIT_OK
-        assert len(data["detections"]) == 34
+        assert len(data["detections"]) == 35
         assert {d["severity"] for d in data["detections"]} <= {str(s) for s in Severity}
 
     def test_markdown(self, capsys):
@@ -203,7 +203,7 @@ class TestDetect:
         assert status == EXIT_OK and out.endswith("No detections found.\n")
 
     @pytest.mark.parametrize(
-        ("level", "expected"), [("low", 34), ("medium", 26), ("high", 19), ("critical", 5)]
+        ("level", "expected"), [("low", 35), ("medium", 26), ("high", 19), ("critical", 3)]
     )
     def test_min_severity_filters(self, capsys, level, expected):
         data = json.loads(run(capsys, "detect", DEMO, "--format", "json",
@@ -230,7 +230,7 @@ class TestDetect:
         assert "| low |" not in out and "| medium |" not in out and "| high |" not in out
         run(capsys, "detect", DEMO, "--min-severity", "critical", "--output", tmp_path / "o")
         saved = json.loads((tmp_path / "o" / "report.json").read_text(encoding="utf-8"))
-        assert len(saved["detections"]) == 5
+        assert len(saved["detections"]) == 3
 
 
 class TestOutputFolder:
@@ -434,7 +434,6 @@ class TestSkippedLineWarning:
     def test_warning_with_an_output_folder(self, capsys, log, tmp_path):
         _, out, err = run(capsys, "detect", log(self.lines(1, 1)), "--output", tmp_path)
         assert "loginsight: warning" in err and "loginsight: warning" not in out
-
 
     def test_parse_statistics_are_always_shown(self, capsys, log):
         out = run(capsys, "detect", log(self.lines(3, 1)))[1]

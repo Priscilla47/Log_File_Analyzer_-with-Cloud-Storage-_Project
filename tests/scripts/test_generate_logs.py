@@ -24,6 +24,9 @@ ALL_LABELS = {
     "path_traversal",
     "command_injection",
     "sensitive_file_probe",
+    "ssrf",
+    "template_injection",
+    "file_inclusion",
     "brute_force",
     "scanner",
 }
@@ -205,7 +208,7 @@ def test_kind_matches_the_label(big):
         assert item["kind"] == expected
 
 
-def test_all_seven_attack_classes_appear(big):
+def test_all_ten_attack_classes_appear(big):
     assert {item["label"] for item in big[1]} == ALL_LABELS
 
 
@@ -247,13 +250,28 @@ def test_labels_file_is_json_lines(gen, tmp_path):
 @pytest.mark.parametrize(
     ("label", "markers"),
     [
-        ("sql_injection", ("'", "union", "drop", "sleep", "%27")),
-        ("xss", ("<", "%3c", "javascript:")),
-        ("path_traversal", ("..", "%2e%2e")),
-        ("command_injection", (";", "|", "$(", "&&", "%60")),
+        ("sql_injection", ("'", "union", "drop", "sleep", "%27", "information_schema")),
+        ("xss", ("<", "%3c", "javascript:", "onmouseover")),
+        ("path_traversal", ("..", "%2e%2e", "/etc/passwd", "php://")),
+        ("command_injection", (";", "|", "$(", "&&", "%60", "/bin/sh", "/dev/tcp", "jndi")),
         (
             "sensitive_file_probe",
-            (".env", ".git", "wp-config", "backup", ".aws", "phpinfo", "id_rsa", "database.yml"),
+            (
+                ".env",
+                ".git",
+                "wp-config",
+                "backup",
+                ".aws",
+                "phpinfo",
+                "id_rsa",
+                "database.yml",
+                "phpmyadmin",
+                "wp-login",
+                "phpunit",
+                "boaform",
+                "gponform",
+                "hnap1",
+            ),
         ),  # noqa: E501
     ],
 )

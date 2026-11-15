@@ -17,6 +17,9 @@ SIGNATURE_LABELS = (
     "path_traversal",
     "command_injection",
     "sensitive_file_probe",
+    "ssrf",
+    "template_injection",
+    "file_inclusion",
 )
 BEHAVIOURAL_LABELS = ("brute_force", "scanner")
 LABELS = SIGNATURE_LABELS + BEHAVIOURAL_LABELS

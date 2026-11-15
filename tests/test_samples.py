@@ -41,11 +41,28 @@ DOCUMENTATION_NETWORKS = [
 ]
 
 MARKERS = {
-    "sql_injection": ("'", "union", "drop", "sleep", "%27"),
-    "xss": ("<", "%3c", "javascript:"),
-    "path_traversal": ("..", "%2e%2e"),
-    "command_injection": (";", "|", "$(", "&&", "%60"),
-    "sensitive_file_probe": (".env", ".git", "wp-config", "backup", ".aws", "phpinfo", "id_rsa"),
+    "sql_injection": ("'", "union", "drop", "sleep", "%27", "information_schema"),
+    "xss": ("<", "%3c", "javascript:", "onmouseover"),
+    "path_traversal": ("..", "%2e%2e", "/etc/passwd", "php://"),
+    "command_injection": (";", "|", "$(", "&&", "%60", "/bin/sh", "/dev/tcp", "jndi"),
+    "sensitive_file_probe": (
+        ".env",
+        ".git",
+        "wp-config",
+        "backup",
+        ".aws",
+        "phpinfo",
+        "id_rsa",
+        "phpmyadmin",
+        "wp-login",
+        "phpunit",
+        "boaform",
+        "gponform",
+        "hnap1",
+    ),  # fmt: skip
+    "ssrf": ("169.254.", "metadata.google", "100.100.100.200"),
+    "template_injection": ("{{", "${", "%7b%7b"),
+    "file_inclusion": ("http://", "https://", "ftp://", "http%3a"),
 }
 
 
@@ -128,7 +145,7 @@ def test_the_nginx_sample_differs_from_the_apache_one_only_where_a_quote_is_esca
     nginx = (SAMPLES / "demo_nginx.log").read_text().splitlines()
     assert len(apache) == len(nginx) == 500
     different = [n for n, (a, b) in enumerate(zip(apache, nginx, strict=True), 1) if a != b]
-    assert different == [141, 220]
+    assert different == [229]
     for number in different:
         assert apache[number - 1].replace('\\"', "\\x22") == nginx[number - 1]
 
@@ -178,7 +195,7 @@ def test_labelled_lines_look_like_their_class(labels):
             target = entry.target.lower()
             assert any(marker in target for marker in MARKERS[item["label"]]), entry.target
             checked += 1
-    assert checked >= 20
+    assert checked >= 25
 
 
 def test_brute_force_lines_are_failed_logins_from_one_address(labels):

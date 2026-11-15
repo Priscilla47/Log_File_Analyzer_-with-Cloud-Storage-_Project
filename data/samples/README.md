@@ -40,11 +40,11 @@ normal traffic.
 | Field | Meaning |
 | --- | --- |
 | `line` | 1-based line number in the log file |
-| `label` | `sql_injection`, `xss`, `path_traversal`, `command_injection`, `sensitive_file_probe`, `brute_force` or `scanner` |
+| `label` | `sql_injection`, `xss`, `path_traversal`, `command_injection`, `sensitive_file_probe`, `ssrf`, `template_injection`, `file_inclusion`, `brute_force` or `scanner` |
 | `kind` | `signature` for a single attack line, `behavioural` for a burst of lines from one address |
 | `ip` | the address that sent the line |
 
-With 500 lines and a 10% attack ratio there is room for the five single-line attacks and one
+With 500 lines and a 10% attack ratio there is room for the eight single-line attack classes and one
 brute-force burst, but not for a scanner burst, which needs about 40 lines. Larger logs
 contain every class.
 
