@@ -245,3 +245,23 @@ class TestCloudStorageGuide:
     def test_it_holds_no_secret_looking_value(self):
         text = self.GUIDE.read_text(encoding="utf-8")
         assert not re.search(r"AKIA[0-9A-Z]{16}|aws_secret_access_key\s*=", text, re.IGNORECASE)
+
+
+class TestPerformanceGuide:
+    text = (DOCS / "PERFORMANCE.md").read_text(encoding="utf-8")
+
+    def test_the_limit_it_states_is_the_one_the_dashboard_keeps(self):
+        from loginsight.dashboard.data import UPLOAD_LIMIT_BYTES, UPLOAD_LIMIT_MB
+
+        assert UPLOAD_LIMIT_BYTES == UPLOAD_LIMIT_MB * 1_000_000
+        assert f"{UPLOAD_LIMIT_MB} MB" in self.text and f"{UPLOAD_LIMIT_BYTES:,} bytes" in self.text
+
+    def test_it_is_linked_from_the_readme_and_the_usage_guide(self):
+        assert "docs/PERFORMANCE.md" in (ROOT / "README.md").read_text(encoding="utf-8")
+        assert "PERFORMANCE.md" in USAGE.read_text(encoding="utf-8")
+
+    def test_the_log_it_measured_is_under_the_limit(self):
+        from loginsight.dashboard.data import UPLOAD_LIMIT_BYTES
+
+        size = int(re.search(r"\*\*Log:\*\* ([\d,]+) bytes", self.text).group(1).replace(",", ""))
+        assert size < UPLOAD_LIMIT_BYTES

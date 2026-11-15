@@ -72,6 +72,7 @@ The layout and the reasoning behind it are in the `docs/` folder:
 - [Architecture](docs/ARCHITECTURE.md): how it is built, the rules file, the report format
 - [Project structure](docs/STRUCTURE.md): how the folders are organised and why
 - [Dashboard browser check](docs/BROWSER_CHECK.md): what was looked at in a real browser and what it found
+- [Dashboard size limit](docs/PERFORMANCE.md): what a log at the 50 MB limit costs, measured
 
 ## License
 
