@@ -1,4 +1,4 @@
-"""Traffic over time: requests and errors per minute or hour, and the busiest window.
+"""Traffic over time: requests and errors per minute, hour or day, and the busiest window.
 
 Pure Python, no files and no pandas. Every timestamp is converted to UTC first, so entries
 logged in different time zones fall in the right bucket. A timestamp without a time zone is
@@ -13,7 +13,11 @@ from datetime import datetime, timedelta, timezone
 
 from loginsight.parsing.models import LogEntry
 
-BUCKET_SIZES = {"minute": timedelta(minutes=1), "hour": timedelta(hours=1)}
+BUCKET_SIZES = {
+    "minute": timedelta(minutes=1),
+    "hour": timedelta(hours=1),
+    "day": timedelta(days=1),
+}
 
 # Filling gaps creates one object per bucket, so one stray timestamp (a log line dated 1970)
 # must not be able to ask for millions of them.
@@ -26,7 +30,7 @@ _ERROR_STATUSES = range(400, 600)
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TimeBucket:
-    """Requests in one minute or hour. ``start`` is in UTC; ``errors`` counts status 400 to 599."""
+    """Requests in one minute, hour or day. ``start`` is UTC; ``errors`` counts status 400-599."""
 
     start: datetime
     requests: int
@@ -59,6 +63,8 @@ def _utc(moment: datetime) -> datetime:
 
 
 def _floor(moment: datetime, bucket: str) -> datetime:
+    if bucket == "day":
+        return moment.replace(hour=0, minute=0, second=0, microsecond=0)
     if bucket == "hour":
         return moment.replace(minute=0, second=0, microsecond=0)
     return moment.replace(second=0, microsecond=0)
@@ -67,7 +73,7 @@ def _floor(moment: datetime, bucket: str) -> datetime:
 def requests_per_bucket(
     entries: Iterable[LogEntry], bucket: str = "hour", *, fill_gaps: bool = True
 ) -> list[TimeBucket]:
-    """Count requests and errors per ``"minute"`` or ``"hour"``, in time order.
+    """Count requests and errors per ``"minute"``, ``"hour"`` or ``"day"``, in time order.
 
     Quiet periods between the first and last request appear as buckets with zero requests.
     With ``fill_gaps=False`` only the buckets that have requests are returned, so a range of

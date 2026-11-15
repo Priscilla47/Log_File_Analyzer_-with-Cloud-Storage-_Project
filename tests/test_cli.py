@@ -435,7 +435,6 @@ class TestSkippedLineWarning:
         _, out, err = run(capsys, "detect", log(self.lines(1, 1)), "--output", tmp_path)
         assert "loginsight: warning" in err and "loginsight: warning" not in out
 
-
     def test_parse_statistics_are_always_shown(self, capsys, log):
         out = run(capsys, "detect", log(self.lines(3, 1)))[1]
         assert "Lines: 4 read, 3 parsed, 1 skipped (75.0% parsed)" in out
@@ -498,10 +497,10 @@ class TestUnexpectedOutputProblems:
         assert fake.flushes >= 1
 
     def test_interrupt(self, capsys, monkeypatch):
-        def interrupted(*args):
+        def interrupted(*args, **kwargs):
             raise KeyboardInterrupt
 
-        monkeypatch.setattr(cli, "parse_text", interrupted)
+        monkeypatch.setattr(cli, "analyze_text", interrupted)
         status, out, err = run(capsys, "analyze", DEMO)
         assert status == cli.EXIT_INTERRUPTED == 130
         assert out == "" and "interrupted" in err and "Traceback" not in err

@@ -20,11 +20,20 @@ dependencies = [
 loginsight = "loginsight.cli:main"
 
 [project.optional-dependencies]
+# The dashboard. The page was written and tested with Streamlit 1.66.1 (Python 3.11 and newer)
+# and 1.65.0 (the newest release that still installs on Python 3.10). The lower bound 1.40 is
+# not tested: it is where the range starts being plausible, and it should be raised to the
+# oldest release the tests actually pass on. The upper bound keeps a new major release, which
+# may change the API, from being installed unseen.
+dashboard = [
+    "streamlit>=1.40,<2",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.17.1,<0.18",
     "mypy>=1.10",
+    "streamlit>=1.40,<2",
     "pre-commit>=3.5",
 ]
 
@@ -41,6 +50,11 @@ markers = [
     "slow: long-running checks, run with `pytest -m slow`",
     "e2e: run the real command in a new process (about a minute), run with `pytest -m e2e`",
 ]
+
+# The dashboard page is run by Streamlit, which coverage cannot follow, so it is left out and
+# kept free of logic instead (a test checks that). tests/dashboard/test_app.py runs it.
+[tool.coverage.run]
+omit = ["src/loginsight/dashboard/app.py"]
 
 [tool.ruff]
 line-length = 100
