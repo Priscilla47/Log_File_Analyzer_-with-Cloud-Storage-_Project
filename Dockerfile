@@ -17,7 +17,8 @@ WORKDIR /app
 # Only what the package needs to be built (see .dockerignore for what is left out).
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN pip install ".[dashboard,s3]"
+# The build leaves a folder behind, and the installed package is what runs: the sources are not kept.
+RUN pip install ".[dashboard,s3]" && rm -rf build src *.egg-info
 
 # The synthetic sample logs, so `docker run IMAGE analyze /samples/demo.log` works at once.
 COPY data/samples /samples
