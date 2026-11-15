@@ -12,7 +12,7 @@ A web server access-log analyzer. Point it at an Apache or Nginx access log (Com
 - **Analyse** traffic: totals, top IPs and paths, status codes, data volume, traffic over time.
 - **Detect attacks** with readable rules: SQL injection, XSS, path traversal, command injection, probes for sensitive files, brute-force logins and scanning. Each detection comes with a severity and the evidence that triggered it.
 - **Two interfaces** over one core library: a command-line tool (ready) and a web dashboard (`loginsight dashboard` shows the headline numbers, three charts, the detections with filters and a view of one address for a log you choose).
-- **Pluggable storage**: every file goes through one small interface. Local files work today; a cloud backend is planned.
+- **Pluggable storage**: every file goes through one small interface. Local files and Amazon S3 buckets work (see [docs/CLOUD_STORAGE.md](docs/CLOUD_STORAGE.md)).
 
 ## Why
 
@@ -60,8 +60,8 @@ pre-commit run --all-files    # run on everything now
 2. Log parsing and statistics: done
 3. Attack detection: done
 4. Command-line tool: done
-5. Web dashboard (started)
-6. Cloud storage backends
+5. Web dashboard
+6. Cloud storage: S3 done, other providers later
 
 ## Project layout
 

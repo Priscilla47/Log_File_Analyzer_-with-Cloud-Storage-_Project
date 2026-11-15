@@ -591,4 +591,4 @@ class TestPackaging:
         assert not re.search(r"(?<![.\w])open\(", source)  # os.open(devnull) is not a file read
         assert "parse_file" not in source
         assert "Temporary exception" not in source
-        assert "LocalStorage" in source
+        assert "storage_for_folder" in source and "LocalStorage" not in source

@@ -20,6 +20,8 @@ dependencies = [
 loginsight = "loginsight.cli:main"
 
 [project.optional-dependencies]
+# Amazon S3 storage (see docs/CLOUD_STORAGE.md). Only the client calls used there are needed.
+s3 = ["boto3>=1.28"]
 # The dashboard. The lower bound 1.50 is the first Streamlit release that has every argument
 # the page passes (bar_chart(sort=...) arrived in 1.50; the page also needs selectbox(index=None)
 # and the placeholders of 1.27). It was checked by running the tests of the page against 1.50.0
@@ -38,6 +40,8 @@ dev = [
     "mypy>=1.10",
     "streamlit>=1.50,<2",
     "pre-commit>=3.5",
+    "boto3>=1.28",
+    "moto[s3]>=5.0",
 ]
 
 [tool.setuptools.packages.find]
