@@ -289,3 +289,53 @@ class TestReadingThenShowing:
 
         outcome = show(read_upload(b"", "a.log"))
         assert outcome.notice == "The file has no requests in it." and outcome.charts is None
+
+
+class TestTheFirstPeriod:
+    """The period the traffic is grouped by at first follows how long the log is."""
+
+    @staticmethod
+    def line(day, hour, minute=0):
+        return (
+            f"203.0.113.5 - - [{day:02d}/Oct/2026:{hour:02d}:{minute:02d}:00 +0000] "
+            '"GET / HTTP/1.1" 200 5 "-" "x"\n'
+        )
+
+    def first(self, text):
+        from loginsight.dashboard.data import read_upload, suggested_bucket
+
+        return suggested_bucket(read_upload(text.encode(), "a.log"))
+
+    @pytest.mark.parametrize(
+        ("lines", "expected"),
+        [
+            ([(1, 10, 0)], "minute"),  # one request: no span at all
+            ([(1, 10, 0), (1, 10, 10)], "minute"),  # the demo log: ten minutes
+            ([(1, 10, 0), (1, 13, 0)], "minute"),  # exactly three hours
+            ([(1, 10, 0), (1, 13, 1)], "hour"),  # a minute over
+            ([(1, 10, 0), (4, 10, 0)], "hour"),  # exactly three days
+            ([(1, 10, 0), (4, 10, 1)], "day"),  # a minute over
+            ([(1, 10, 0), (30, 10, 0)], "day"),
+        ],
+    )
+    def test_the_period_follows_the_length_of_the_log(self, lines, expected):
+        assert self.first("".join(self.line(*item) for item in lines)) == expected
+
+    def test_an_empty_or_unreadable_file_gets_the_default(self):
+        assert self.first("") == "hour" == DEFAULT_BUCKET_NAME
+        assert self.first("junk\n" * 3) == "hour"
+
+    def test_the_demo_log_starts_by_the_minute(self):
+        assert self.first(self.DEMO_TEXT) == "minute"
+
+    DEMO_TEXT = (SAMPLES / "demo.log").read_text()
+
+    def test_asking_builds_only_the_default_period_and_remembers_it(self):
+        from loginsight.dashboard.data import read_upload, suggested_bucket
+
+        upload = read_upload(self.DEMO_TEXT.encode(), "demo.log")
+        suggested_bucket(upload)
+        assert list(upload.shown) == ["hour"]
+
+
+DEFAULT_BUCKET_NAME = "hour"

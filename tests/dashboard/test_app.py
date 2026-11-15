@@ -235,3 +235,23 @@ def test_a_wide_time_range_still_draws_with_a_note():
     assert [c.value for c in app.caption][0] == (
         "Quiet periods are not listed because the log covers too long a time."
     )
+
+
+def test_a_short_log_starts_grouped_by_the_minute_and_the_line_has_its_points():
+    # found in a real browser: grouped by the hour the demo log (ten minutes) was one point and
+    # the line drew nothing
+    app = upload("demo.log", (SAMPLES / "demo.log").read_bytes())
+    assert app.radio[0].value == "minute"
+    assert rows_of(vega_charts(app)[1]).num_rows == 2 * 11
+
+
+def test_a_log_of_one_period_is_drawn_as_bars():
+    one = (SAMPLES / "demo.log").read_bytes().splitlines(keepends=True)[:3]
+    app = upload("tiny.log", b"".join(one))
+    assert not app.exception and app.radio[0].value == "minute"
+    app.radio[0].set_value("day").run()
+    assert not app.exception
+    assert spec_of(vega_charts(app)[1])["mark"]["type"] == "bar"
+    assert "Only one period has requests, so the traffic is drawn as bars." in [
+        c.value for c in app.caption
+    ]

@@ -25,7 +25,9 @@ def _charts(st: Any, charts: data.Charts) -> None:
         color=data.COLOUR_MAIN,
     )
     st.subheader("Traffic over time")
-    st.line_chart(
+    # A line needs two points: with one period only it draws nothing, so bars are drawn instead.
+    draw = st.line_chart if len(charts.traffic["Requests"]) >= 2 else st.bar_chart
+    draw(
         charts.traffic,
         x="Time (UTC)",
         y=["Requests", "Errors"],
@@ -33,6 +35,8 @@ def _charts(st: Any, charts: data.Charts) -> None:
         y_label="Requests",
         color=[data.COLOUR_MAIN, data.COLOUR_ERRORS],
     )
+    if len(charts.traffic["Requests"]) < 2:
+        st.caption("Only one period has requests, so the traffic is drawn as bars.")
     if not charts.gaps_filled:
         st.caption(GAPS_NOTE)
     st.subheader("Most requested paths")
@@ -137,6 +141,8 @@ def _address(st: Any, report: Report, entries: list[LogEntry], scope: str) -> No
     cards = data.profile_cards(profile)
     for column, card in zip(st.columns(len(cards)), cards, strict=True):
         column.metric(card.label, card.value, help=card.help)
+    for fact in data.profile_facts(profile):
+        st.text(fact)
     left, right = st.columns(2)
     left.caption("Responses it received")
     left.dataframe(data.profile_status_table(profile), hide_index=True)
@@ -162,18 +168,19 @@ def show_page(st: Any) -> None:
     if upload is None:
         st.info(data.EMPTY_MESSAGE)
         return
-    bucket = st.radio(
-        "Group the traffic by",
-        data.BUCKETS,
-        index=data.BUCKETS.index(data.DEFAULT_BUCKET),
-        horizontal=True,
-        key="bucket",
-    )
     # Reading the log is the slow part and every click reruns this page, so the result is kept:
     # changing a filter, an address or the traffic period then costs nothing. Only the latest
     # reading is kept, because it holds every request of the log in memory.
     read = st.cache_resource(max_entries=1, show_spinner="Reading the log…")(data.read_upload)
-    outcome = data.show(read(upload.getvalue(), upload.name, limit=limit), bucket)
+    reading = read(upload.getvalue(), upload.name, limit=limit)
+    bucket = st.radio(
+        "Group the traffic by",
+        data.BUCKETS,
+        index=data.BUCKETS.index(data.suggested_bucket(reading)),
+        horizontal=True,
+        key=f"bucket:{upload.file_id}",  # a new file starts from its own suggestion
+    )
+    outcome = data.show(reading, bucket)
     if outcome.error is not None:
         st.error(outcome.error)
         return

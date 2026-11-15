@@ -131,7 +131,9 @@ def test_the_address_view_shows_one_address():
     app.selectbox[-1].select(top).run()
     assert not app.exception
     shown = {m.label: m.value for m in app.metric}
-    assert {"Requests", "First seen", "Last seen", "Detections"} <= set(shown)
+    assert {"Requests", "Detections"} <= set(shown)
+    assert any(t.value.startswith("First seen: 20") for t in app.text)
+    assert any(t.value.startswith("Last seen: 20") for t in app.text)
     assert int(shown["Requests"]) >= 1
 
 

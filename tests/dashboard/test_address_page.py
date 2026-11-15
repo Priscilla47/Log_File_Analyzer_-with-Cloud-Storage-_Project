@@ -49,7 +49,11 @@ class TestOneAddress:
         profile = ip_profile(entries, report().detections, top)
         cards = {c[1]: c[2] for c in fake.calls if c[0] == "column.metric"}
         assert cards["Detections"] == str(len(profile.detections)) and profile.detections
-        assert fake.of("columns")[-2:] == [(4,), (2,)]
+        assert fake.of("columns")[-2:] == [(2,), (2,)]  # two numbers, then the two tables
+        texts = [t[0] for t in fake.of("text")]
+        assert [
+            t for t in texts if t.startswith(("First seen:", "Last seen:"))
+        ] == data.profile_facts(profile)
         assert ("Responses it received",) in fake.of("caption")
         assert ("Paths it asked for",) in fake.of("caption")
         shown = [call[1] for call in fake.calls if call[0] == "dataframe"]
@@ -81,12 +85,19 @@ class TestTheProfileTables:
     def test_cards_name_requests_times_and_detections(self):
         ip = data.ip_choices(report())[0]
         cards = data.profile_cards(self.profile(ip))
-        assert [c.label for c in cards] == ["Requests", "First seen", "Last seen", "Detections"]
-        assert cards[1].value.endswith(" UTC") and len(cards[0].help) > 10
+        assert [c.label for c in cards] == ["Requests", "Detections"]
+        assert len(cards[0].help) > 10 and len(cards[1].help) > 10
+        first, last = data.profile_facts(self.profile(ip))
+        assert first.startswith("First seen: ") and first.endswith(" UTC")
+        assert last.startswith("Last seen: ") and last.endswith(" UTC")
 
     def test_an_unknown_address_has_dashes_not_a_crash(self):
         cards = data.profile_cards(self.profile("198.51.100.77"))
-        assert [c.value for c in cards] == ["0", "-", "-", "0"]
+        assert [c.value for c in cards] == ["0", "0"]
+        assert data.profile_facts(self.profile("198.51.100.77")) == [
+            "First seen: -",
+            "Last seen: -",
+        ]
 
     def test_the_status_table_lists_only_the_classes_it_got_and_adds_up(self):
         profile = self.profile(data.ip_choices(report())[0])
@@ -118,9 +129,10 @@ class TestTheProfileTables:
             status_classes={"2xx": 2}, distinct_paths=1, top_paths=[("/", 2)],
             other_requests=0, detections=[],
         )  # fmt: skip
-        cards = {c.label: c.value for c in data.profile_cards(profile)}
-        assert cards["First seen"] == "2026-10-10 10:00:01 UTC"
-        assert cards["Last seen"] == "2026-10-10 16:59:59 UTC"
+        assert data.profile_facts(profile) == [
+            "First seen: 2026-10-10 10:00:01 UTC",
+            "Last seen: 2026-10-10 16:59:59 UTC",
+        ]
 
     def test_a_time_without_an_offset_is_taken_as_utc(self):
         from datetime import datetime
@@ -132,7 +144,10 @@ class TestTheProfileTables:
             last_seen=None, status_classes={"2xx": 1}, distinct_paths=1,
             top_paths=[("/", 1)], other_requests=0, detections=[],
         )  # fmt: skip
-        assert data.profile_cards(profile)[1].value == "2026-10-10 12:00:01 UTC"
+        assert data.profile_facts(profile) == [
+            "First seen: 2026-10-10 12:00:01 UTC",
+            "Last seen: -",
+        ]
 
     @pytest.mark.parametrize("start", ["=", "+", "-", "@"])
     def test_a_path_a_spreadsheet_would_read_as_a_formula_is_quoted(self, start):

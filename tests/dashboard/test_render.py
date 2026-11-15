@@ -37,7 +37,7 @@ class Column:
 
 
 class FakeStreamlit:
-    def __init__(self, upload=None, bucket="hour", **choices):
+    def __init__(self, upload=None, bucket=None, **choices):
         self.upload = upload
         self.bucket = bucket
         self.choices = choices  # what the person picked: Severity, Class, filter_ip, address, time
@@ -70,7 +70,8 @@ class FakeStreamlit:
 
     def radio(self, label, options, **kwargs):
         self.calls.append(("radio", label, tuple(options), kwargs.get("index"), kwargs.get("key")))
-        return self.bucket
+        # nothing chosen by the person: the page's own first choice, as Streamlit would show it
+        return self.bucket if self.bucket is not None else tuple(options)[kwargs["index"]]
 
     def subheader(self, text):
         self.calls.append(("subheader", text))
@@ -160,7 +161,7 @@ class Checked:
         return call
 
 
-def run(upload, bucket="hour", **choices):
+def run(upload, bucket=None, **choices):
     fake = FakeStreamlit(upload, bucket, **choices)
     show_page(fake if real_streamlit is None else Checked(fake, real_streamlit))
     return fake
@@ -265,7 +266,7 @@ class TestProblems:
 class TestCharts:
     @pytest.fixture
     def fake(self):
-        return run(Upload((GOOD * 3 + ERR).encode()))
+        return run(Upload((GOOD * 3 + ERR.replace("10:00:02", "10:01:02")).encode()))
 
     def test_three_charts_each_after_its_own_title(self, fake):
         names = fake.names()
@@ -309,17 +310,16 @@ class TestCharts:
         names = fake.names()
         assert names.index("file_uploader") < names.index("radio") < names.index("columns")
         ((label, options, index, key),) = fake.of("radio")
-        assert label == "Group the traffic by" and key == "bucket"
-        assert options == ("minute", "hour", "day") and options[index] == "hour"
+        assert label == "Group the traffic by" and key == "bucket:a1b2c3"  # one per chosen file
+        assert options == ("minute", "hour", "day") and options[index] == "minute"  # a short log
 
     @pytest.mark.parametrize("bucket", ["minute", "hour", "day"])
     def test_the_chosen_bucket_decides_the_traffic_series(self, bucket):
         rows = {"minute": 61, "hour": 2, "day": 1}
         text = GOOD + GOOD.replace("10:00:01", "11:00:01")
-        traffic = [c for c in run(Upload(text.encode()), bucket).calls if c[0] == "line_chart"][0][
-            1
-        ]
-        assert len(traffic["Requests"]) == rows[bucket]
+        calls = run(Upload(text.encode()), bucket).calls
+        traffic = [c for c in calls if c[0] in ("line_chart", "bar_chart") and "Errors" in c[1]]
+        assert len(traffic[0][1]["Requests"]) == rows[bucket]
 
     CHART_CALLS = {"bar_chart", "line_chart", "subheader"}
 
@@ -375,3 +375,39 @@ class TestTheCheckAgainstRealStreamlit:
         column.metric("Requests", "1", help="x")
         with pytest.raises(TypeError):
             column.metric("Requests", "1", no_such_option=1)
+
+
+class TestTheFirstPeriodAndTheSinglePoint:
+    """Found by looking at the page in a real browser: ten minutes of log grouped by the hour is
+    one point, and a line through one point draws nothing at all."""
+
+    def traffic(self, fake):
+        return [c for c in fake.calls if c[0] in ("line_chart", "bar_chart") and "Errors" in c[1]]
+
+    def test_a_short_log_starts_grouped_by_the_minute_so_the_line_has_points(self):
+        text = GOOD + GOOD.replace("10:00:01", "10:07:01")
+        fake = run(Upload(text.encode()))
+        ((_, options, index, _key),) = fake.of("radio")
+        assert options[index] == "minute"
+        (chart,) = self.traffic(fake)
+        assert chart[0] == "line_chart" and len(chart[1]["Requests"]) == 8
+
+    def test_one_period_only_is_drawn_as_bars_with_a_note(self):
+        fake = run(Upload((GOOD * 3).encode()), "hour")
+        (chart,) = self.traffic(fake)
+        assert chart[0] == "bar_chart" and chart[1]["Requests"] == [3]
+        assert chart[2]["x"] == "Time (UTC)" and chart[2]["y"] == ["Requests", "Errors"]
+        assert chart[2]["color"] == [data.COLOUR_MAIN, data.COLOUR_ERRORS]
+        assert ("Only one period has requests, so the traffic is drawn as bars.",) in fake.of(
+            "caption"
+        )
+
+    def test_two_periods_are_a_line_without_the_note(self):
+        fake = run(Upload((GOOD + GOOD.replace("10:00:01", "10:01:01")).encode()), "minute")
+        (chart,) = self.traffic(fake)
+        assert chart[0] == "line_chart"
+        assert not any("Only one period" in c[0] for c in fake.of("caption"))
+
+    def test_a_file_that_cannot_be_read_still_offers_the_period_choice_at_the_default(self):
+        ((_, options, index, _key),) = run(Upload(b"junk\n" * 3)).of("radio")
+        assert options[index] == data.DEFAULT_BUCKET

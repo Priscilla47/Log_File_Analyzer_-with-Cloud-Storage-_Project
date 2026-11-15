@@ -6,7 +6,7 @@ without a browser. It never imports Streamlit. The numbers come from the same
 """
 
 from dataclasses import dataclass, field
-from datetime import timezone
+from datetime import timedelta, timezone
 
 from loginsight.dashboard.filters import MAX_ADDRESS_CHOICES, canonical_address, cell, ip_counts
 from loginsight.dashboard.profile import IpProfile
@@ -32,6 +32,11 @@ DEFAULT_BUCKET = "hour"
 # At most this many addresses are offered for the per-address view (the same number as in the
 # detections filter), so a log with tens of thousands of addresses cannot make the list unusable.
 MAX_IP_CHOICES = MAX_ADDRESS_CHOICES
+
+# The traffic is first grouped by the finest period that still gives a readable line: minutes for
+# a log of up to this many hours, hours up to this many days, days for a longer one.
+MINUTES_UP_TO_HOURS = 3
+HOURS_UP_TO_DAYS = 3
 
 # A path longer than this is shortened in the chart so the bars stay readable.
 MAX_PATH_LABEL = 60
@@ -245,6 +250,26 @@ def show(upload: Upload, bucket: str = DEFAULT_BUCKET) -> Outcome:
     return outcome
 
 
+def suggested_bucket(upload: Upload) -> str:
+    """The period to group the traffic by at first: fine enough for the line to show something.
+
+    A log of ten minutes grouped by the hour is one point, which draws no line at all, so the
+    period follows how long the log is (see :data:`MINUTES_UP_TO_HOURS`); a log that could not
+    be read, or has no requests, gets :data:`DEFAULT_BUCKET`.
+    """
+    if upload.error is not None:
+        return DEFAULT_BUCKET
+    summary = show(upload, DEFAULT_BUCKET).report.summary  # type: ignore[union-attr]
+    if summary.first_time is None or summary.last_time is None:
+        return DEFAULT_BUCKET
+    span = summary.last_time - summary.first_time
+    if span <= timedelta(hours=MINUTES_UP_TO_HOURS):
+        return "minute"
+    if span <= timedelta(days=HOURS_UP_TO_DAYS):
+        return "hour"
+    return "day"
+
+
 def analyze_upload(
     raw: bytes, name: str, *, limit: int = UPLOAD_LIMIT_BYTES, bucket: str = DEFAULT_BUCKET
 ) -> Outcome:
@@ -287,21 +312,31 @@ def limit_text(count: int, *, decimals: bool = True) -> str:
     return f"{round(count / megabyte, 1):g} MB"
 
 
+def _moment(value) -> str:
+    """A time in UTC (the log's own offset is converted; no offset means UTC), or ``-``."""
+    if not value:
+        return "-"
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc)
+    return value.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def profile_facts(profile: IpProfile) -> list[str]:
+    """When the address was first and last seen, as lines of plain text.
+
+    They are text and not cards: a full date and time is too wide for a card, and a browser
+    check showed it cut to ``2026-01-01 00:09:...``.
+    """
+    return [
+        f"First seen: {_moment(profile.first_seen)}",
+        f"Last seen: {_moment(profile.last_seen)}",
+    ]
+
+
 def profile_cards(profile: IpProfile) -> list[Card]:
     """The headline numbers of one address, in the order the page shows them."""
-
-    def moment(value) -> str:
-        """A time in UTC (the log's own offset is converted; no offset means UTC)."""
-        if not value:
-            return "-"
-        if value.tzinfo is not None:
-            value = value.astimezone(timezone.utc)
-        return value.strftime("%Y-%m-%d %H:%M:%S UTC")
-
     return [
         Card(label="Requests", value=str(profile.requests), help="Requests this address sent."),
-        Card(label="First seen", value=moment(profile.first_seen), help="Its first request."),
-        Card(label="Last seen", value=moment(profile.last_seen), help="Its last request."),
         Card(
             label="Detections",
             value=str(len(profile.detections)),
