@@ -94,18 +94,23 @@ def test_a_clean_log_has_no_filters_and_says_so():
     assert len(app.multiselect) == 0 and len(app.slider) == 0
 
 
-def test_hostile_evidence_is_shown_as_text_and_the_page_survives():
+def test_hostile_evidence_is_shown_as_escaped_text_and_the_page_survives():
+    # a real escape character and NUL in the request, then text a spreadsheet reads as a formula
     evil = (
-        '203.0.113.7 - - [10/Oct/2026:10:00:01 +0000] "GET /?q=<script>alert(1)</script>'
-        '%1b%5b2J UNION SELECT 1 HTTP/1.1" 200 5 "-" "x"\n'
-        '203.0.113.7 - - [10/Oct/2026:10:00:05 +0000] "GET /?a=%27%20OR%201=1-- HTTP/1.1" '
-        '200 5 "-" "x"\n'
+        '203.0.113.7 - - [10/Oct/2026:10:00:01 +0000] "GET /?q=<script>alert(1)</script>\x1b[2J'
+        '\x00 UNION SELECT 1 HTTP/1.1" 200 5 "-" "x"\n'
+        '=HYPERLINK("http://evil","x") - - [10/Oct/2026:10:00:05 +0000] '
+        '"GET /?a=%27%20OR%201=1-- HTTP/1.1" 200 5 "-" "x"\n'
     )
     app = upload("evil.log", evil.encode())
     assert not app.exception
-    evidence = list(app.dataframe[0].value["Evidence"])
-    assert evidence and all("\x1b" not in text for text in evidence)
-    assert not app.markdown or all("<script>" not in m.value for m in app.markdown)
+    table = app.dataframe[0].value
+    evidence = list(table["Evidence"])
+    assert any("\\x1b[2J" in text and "\\x00" in text for text in evidence)
+    assert all("\x1b" not in text and "\x00" not in text for text in evidence)
+    assert any("<script>" in text for text in evidence)  # shown as the text it is
+    assert any(ip.startswith("'=HYPERLINK") for ip in table["IP"])  # quoted, not a formula
+    assert len(app.markdown) == 0  # nothing was handed to the markdown renderer
 
 
 def test_the_address_view_shows_one_address():
@@ -120,13 +125,38 @@ def test_the_address_view_shows_one_address():
     assert int(shown["Requests"]) >= 1
 
 
-def test_each_address_request_count_adds_up_to_the_total_on_the_cards():
+def test_a_chosen_address_shows_exactly_the_requests_it_sent():
+    from loginsight.parsing.parser import parse_file
+
+    entries = parse_file(SAMPLES / "demo.log").entries
     base = upload("demo.log", DEMO)
-    total = int({m.label: m.value for m in base.metric}["Requests"])
-    choices = base.selectbox[-1].options
-    seen = 0
-    for choice in choices[:3]:
+    for choice in base.selectbox[-1].options[:3]:
         app = upload("demo.log", DEMO)
         app.selectbox[-1].select(choice).run()
-        seen += int([m.value for m in app.metric if m.label == "Requests"][-1])
-    assert 0 < seen <= total
+        shown = [int(m.value) for m in app.metric if m.label == "Requests"][-1]
+        assert shown == sum(1 for e in entries if e.ip == choice) > 0
+
+
+def test_a_part_of_the_time_range_narrows_the_list_to_it_and_includes_its_last_second():
+    detections = data.analyze_upload(DEMO, "d").report.detections
+    first, last = filters.time_bounds(detections)
+    middle = first + (last - first) / 2
+    middle = middle.replace(microsecond=0)
+    app = upload("demo.log", DEMO)
+    app.slider[0].set_range(first, middle).run()
+    assert not app.exception
+    start, end = filters.range_to_filter((first, last), (first, middle))
+    expected = filters.filter_detections(detections, start=start, end=end)
+    assert 0 < len(expected) < len(detections)
+    assert list(app.dataframe[0].value["Rule"]) == [d.rule_id for d in expected]
+
+
+def test_the_address_filter_narrows_the_list_in_the_real_page():
+    detections = data.analyze_upload(DEMO, "d").report.detections
+    ip = filters.ip_counts(detections).popitem()[0]
+    app = upload("demo.log", DEMO)
+    app.selectbox[0].select(ip).run()
+    assert not app.exception
+    expected = filters.filter_detections(detections, ip=ip)
+    assert 0 < len(expected) < len(detections)
+    assert list(app.dataframe[0].value["Rule"]) == [d.rule_id for d in expected]

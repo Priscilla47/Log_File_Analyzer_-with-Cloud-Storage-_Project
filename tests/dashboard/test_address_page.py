@@ -3,6 +3,8 @@
 import functools
 from pathlib import Path
 
+import pytest
+
 from loginsight.dashboard import data, filters
 from loginsight.parsing.parser import parse_file
 from tests.dashboard.test_render import Upload, run
@@ -103,6 +105,68 @@ class TestTheProfileTables:
             else:
                 assert not any(p.startswith("(other paths") for p in table["Path"])
 
+    def test_a_time_with_an_offset_is_shown_in_utc_not_with_a_wrong_label(self):
+        from datetime import datetime, timedelta, timezone
+
+        from loginsight.dashboard.profile import IpProfile
+
+        plus_two = timezone(timedelta(hours=2))
+        profile = IpProfile(
+            ip="1.2.3.4", known=True, requests=2,
+            first_seen=datetime(2026, 10, 10, 12, 0, 1, tzinfo=plus_two),
+            last_seen=datetime(2026, 10, 10, 11, 59, 59, tzinfo=timezone(timedelta(hours=-5))),
+            status_classes={"2xx": 2}, distinct_paths=1, top_paths=[("/", 2)],
+            other_requests=0, detections=[],
+        )  # fmt: skip
+        cards = {c.label: c.value for c in data.profile_cards(profile)}
+        assert cards["First seen"] == "2026-10-10 10:00:01 UTC"
+        assert cards["Last seen"] == "2026-10-10 16:59:59 UTC"
+
+    def test_a_time_without_an_offset_is_taken_as_utc(self):
+        from datetime import datetime
+
+        from loginsight.dashboard.profile import IpProfile
+
+        profile = IpProfile(
+            ip="1.2.3.4", known=True, requests=1, first_seen=datetime(2026, 10, 10, 12, 0, 1),
+            last_seen=None, status_classes={"2xx": 1}, distinct_paths=1,
+            top_paths=[("/", 1)], other_requests=0, detections=[],
+        )  # fmt: skip
+        assert data.profile_cards(profile)[1].value == "2026-10-10 12:00:01 UTC"
+
+    @pytest.mark.parametrize("start", ["=", "+", "-", "@"])
+    def test_a_path_a_spreadsheet_would_read_as_a_formula_is_quoted(self, start):
+        from loginsight.dashboard.profile import IpProfile
+
+        profile = IpProfile(
+            ip="1.2.3.4", known=True, requests=2, first_seen=None, last_seen=None,
+            status_classes={"2xx": 2}, distinct_paths=2,
+            top_paths=[(start + "1+1|cmd", 1), ("/normal=a", 1)],
+            other_requests=0, detections=[],
+        )  # fmt: skip
+        assert data.profile_paths_table(profile)["Path"] == ["'" + start + "1+1|cmd", "/normal=a"]
+
+    def test_a_very_long_path_is_cut_in_the_table_like_in_the_chart(self):
+        from loginsight.dashboard.profile import IpProfile
+
+        profile = IpProfile(
+            ip="1.2.3.4", known=True, requests=1, first_seen=None, last_seen=None,
+            status_classes={"2xx": 1}, distinct_paths=1, top_paths=[("/" + "a" * 200, 1)],
+            other_requests=0, detections=[],
+        )  # fmt: skip
+        (path,) = data.profile_paths_table(profile)["Path"]
+        assert len(path) == data.MAX_PATH_LABEL and path.endswith("\u2026")
+
+    def test_the_address_list_of_the_view_escapes_what_comes_from_the_log(self):
+        line = (
+            "203.0.113.9\x1b[31m - - [10/Oct/2026:10:00:01 +0000] "
+            '"GET /?q=1%27%20UNION%20SELECT%201 HTTP/1.1" 200 5 "-" "x"\n'
+        )
+        fake = run(Upload(line.encode()))
+        view = [c for c in fake.calls if c[0] == "selectbox" and c[1] == "Address"][1]
+        assert view[3] and all("\x1b" not in label for label in view[3])
+        assert any("\\x1b" in label for label in view[3])
+
     def test_hostile_paths_are_escaped(self):
         from loginsight.dashboard.profile import IpProfile
 
@@ -115,6 +179,28 @@ class TestTheProfileTables:
 
 
 class TestTheAddressChoices:
+    def test_an_address_spelled_two_ways_is_offered_once_in_its_canonical_form(self):
+        from datetime import datetime, timezone
+
+        from loginsight.analysis.summary import summarize
+        from loginsight.parsing.models import LogEntry
+
+        def at(ip):
+            return LogEntry(
+                ip=ip, time=datetime(2026, 1, 1, tzinfo=timezone.utc), method="GET", path="/",
+                query="", protocol="HTTP/1.1", status=200, size=1, request="GET / HTTP/1.1",
+            )  # fmt: skip
+
+        report = data.analyze_upload(DEMO, "d").report
+        entries = [at("2001:DB8::1"), at("2001:db8::1"), at("203.0.113.5")]
+        from dataclasses import replace
+
+        report = replace(report, summary=summarize(entries), detections=[])
+        assert data.ip_choices(report) == ["2001:db8::1", "203.0.113.5"]
+
+    def test_the_two_caps_are_one_number(self):
+        assert data.MAX_IP_CHOICES == filters.MAX_ADDRESS_CHOICES == 200
+
     def test_they_are_capped(self):
         assert len(data.ip_choices(report(), limit=3)) == 3
         assert data.ip_choices(report(), limit=0) == []

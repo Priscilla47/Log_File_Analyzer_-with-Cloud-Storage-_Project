@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from loginsight.analysis.summary import summarize
-from loginsight.dashboard.filters import same_address
+from loginsight.dashboard.filters import canonical_address
 from loginsight.detection.models import Detection
 from loginsight.parsing.models import LogEntry
 
@@ -45,13 +45,14 @@ def ip_profile(
     *,
     top_n: int = TOP_PATHS,
 ) -> IpProfile:
-    """The profile of ``ip`` (compared with :func:`~loginsight.dashboard.filters.same_address`).
+    """The profile of ``ip`` (compared as in :func:`~loginsight.dashboard.filters.same_address`).
 
     An address that never appears gives an empty profile, not an exception. ``top_n`` is how
     many paths are listed (a negative number raises :class:`ValueError`).
     """
-    mine = [entry for entry in entries if same_address(entry.ip, ip)]
-    found = [detection for detection in detections if same_address(detection.ip, ip)]
+    wanted = canonical_address(ip)  # worked out once; the others are remembered per address
+    mine = [e for e in entries if e.ip == ip or canonical_address(e.ip) == wanted]
+    found = [d for d in detections if d.ip == ip or canonical_address(d.ip) == wanted]
     everything = summarize(mine, top_n=top_n)
     distinct = len({entry.path for entry in mine})
     listed = sum(count for _, count in everything.top_paths)
