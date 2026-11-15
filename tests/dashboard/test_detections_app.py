@@ -1,0 +1,233 @@
+"""The detections list, the address view and the kept analysis on the real page."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("streamlit")
+
+import streamlit  # noqa: E402
+from streamlit.testing.v1 import AppTest  # noqa: E402
+
+from loginsight.cli import main  # noqa: E402
+from loginsight.dashboard import data, filters, launch  # noqa: E402
+from loginsight.detection.models import Severity  # noqa: E402
+
+SAMPLES = Path(__file__).resolve().parents[2] / "data" / "samples"
+DEMO = (SAMPLES / "demo.log").read_bytes()
+
+
+@pytest.fixture(autouse=True)
+def fresh_cache():
+    streamlit.cache_resource.clear()
+    yield
+    streamlit.cache_resource.clear()
+
+
+def upload(name, raw):
+    app = AppTest.from_file(str(launch.APP_FILE), default_timeout=30).run()
+    app.file_uploader[0].upload(name, raw).run()
+    return app
+
+
+def rows(frame):
+    return len(frame.value)
+
+
+@pytest.fixture
+def cli_detections(capsys):
+    assert main(["detect", str(SAMPLES / "demo.log"), "--format", "json"]) == 0
+    return json.loads(capsys.readouterr().out)["detections"]
+
+
+def test_the_list_has_every_detection_the_command_line_finds(cli_detections):
+    app = upload("demo.log", DEMO)
+    assert not app.exception
+    table = app.dataframe[0].value
+    assert len(table) == len(cli_detections) > 0
+    assert list(table["Rule"]) == [d["rule_id"] for d in cli_detections]
+    assert list(table["IP"]) == [d["ip"] for d in cli_detections]
+
+
+def test_the_filter_widgets_offer_each_value_with_its_count(cli_detections):
+    app = upload("demo.log", DEMO)
+    assert [w.label for w in app.multiselect] == ["Severity", "Class"]
+    assert app.multiselect[0].options == [
+        f"{s} ({n})"
+        for s, n in filters.severity_counts(
+            data.analyze_upload(DEMO, "d").report.detections
+        ).items()
+    ]
+    assert len(app.slider) == 1 and app.slider[0].label == "Time range (UTC)"
+
+
+def test_choosing_a_severity_narrows_the_list_and_the_caption(cli_detections):
+    app = upload("demo.log", DEMO)
+    wanted = [d for d in cli_detections if d["severity"] == "critical"]
+    assert 0 < len(wanted) < len(cli_detections)
+    app.multiselect[0].select(Severity.CRITICAL).run()
+    assert not app.exception
+    assert [r for r in app.dataframe[0].value["Rule"]] == [d["rule_id"] for d in wanted]
+    assert f"Showing {len(wanted)} of {len(cli_detections)} detections." in [
+        c.value for c in app.caption
+    ]
+
+
+def test_clearing_the_choice_shows_everything_again(cli_detections):
+    app = upload("demo.log", DEMO)
+    app.multiselect[0].select(Severity.CRITICAL).run()
+    app.multiselect[0].unselect(Severity.CRITICAL).run()
+    assert rows(app.dataframe[0]) == len(cli_detections)
+
+
+def test_a_choice_with_no_match_says_so():
+    detections = data.analyze_upload(DEMO, "d").report.detections
+    label = next(d.label for d in detections if d.severity is Severity.CRITICAL)
+    other = next(
+        s for s in Severity if not any(d.label == label and d.severity is s for d in detections)
+    )
+    app = upload("demo.log", DEMO)
+    app.multiselect[1].select(label).run()
+    app.multiselect[0].select(other).run()
+    assert not app.exception
+    assert "No detection matches these filters." in [i.value for i in app.info]
+    assert not [f for f in app.dataframe if "Rule" in f.value]
+
+
+def test_a_clean_log_has_no_filters_and_says_so():
+    app = upload("clean.log", (SAMPLES / "clean.log").read_bytes())
+    assert not app.exception
+    assert "No attacks were detected in this log." in [s.value for s in app.success]
+    assert len(app.multiselect) == 0 and len(app.slider) == 0
+
+
+def test_hostile_evidence_is_shown_as_escaped_text_and_the_page_survives():
+    # a real escape character and NUL in the request, then text a spreadsheet reads as a formula
+    evil = (
+        '203.0.113.7 - - [10/Oct/2026:10:00:01 +0000] "GET /?q=<script>alert(1)</script>\x1b[2J'
+        '\x00 UNION SELECT 1 HTTP/1.1" 200 5 "-" "x"\n'
+        '=HYPERLINK("http://evil","x") - - [10/Oct/2026:10:00:05 +0000] '
+        '"GET /?a=%27%20OR%201=1-- HTTP/1.1" 200 5 "-" "x"\n'
+    )
+    app = upload("evil.log", evil.encode())
+    assert not app.exception
+    table = app.dataframe[0].value
+    evidence = list(table["Evidence"])
+    assert any("\\x1b[2J" in text and "\\x00" in text for text in evidence)
+    assert all("\x1b" not in text and "\x00" not in text for text in evidence)
+    assert any("<script>" in text for text in evidence)  # shown as the text it is
+    assert any(ip.startswith("'=HYPERLINK") for ip in table["IP"])  # quoted, not a formula
+    assert len(app.markdown) == 0  # nothing was handed to the markdown renderer
+
+
+def test_the_address_view_shows_one_address():
+    app = upload("demo.log", DEMO)
+    assert app.subheader[-1].value == "One address"
+    assert "Choose an address to see everything it did." in [c.value for c in app.caption]
+    top = data.ip_choices(data.analyze_upload(DEMO, "d").report)[0]
+    app.selectbox[-1].select(top).run()
+    assert not app.exception
+    shown = {m.label: m.value for m in app.metric}
+    assert {"Requests", "First seen", "Last seen", "Detections"} <= set(shown)
+    assert int(shown["Requests"]) >= 1
+
+
+def test_a_chosen_address_shows_exactly_the_requests_it_sent():
+    from loginsight.parsing.parser import parse_file
+
+    entries = parse_file(SAMPLES / "demo.log").entries
+    base = upload("demo.log", DEMO)
+    for choice in base.selectbox[-1].options[:3]:
+        app = upload("demo.log", DEMO)
+        app.selectbox[-1].select(choice).run()
+        shown = [int(m.value) for m in app.metric if m.label == "Requests"][-1]
+        assert shown == sum(1 for e in entries if e.ip == choice) > 0
+
+
+def test_a_part_of_the_time_range_narrows_the_list_to_it_and_includes_its_last_second():
+    detections = data.analyze_upload(DEMO, "d").report.detections
+    first, last = filters.time_bounds(detections)
+    middle = first + (last - first) / 2
+    middle = middle.replace(microsecond=0)
+    app = upload("demo.log", DEMO)
+    app.slider[0].set_range(first, middle).run()
+    assert not app.exception
+    start, end = filters.range_to_filter((first, last), (first, middle))
+    expected = filters.filter_detections(detections, start=start, end=end)
+    assert 0 < len(expected) < len(detections)
+    assert list(app.dataframe[0].value["Rule"]) == [d.rule_id for d in expected]
+
+
+def test_the_address_filter_narrows_the_list_in_the_real_page():
+    detections = data.analyze_upload(DEMO, "d").report.detections
+    ip = filters.ip_counts(detections).popitem()[0]
+    app = upload("demo.log", DEMO)
+    app.selectbox[0].select(ip).run()
+    assert not app.exception
+    expected = filters.filter_detections(detections, ip=ip)
+    assert 0 < len(expected) < len(detections)
+    assert list(app.dataframe[0].value["Rule"]) == [d.rule_id for d in expected]
+
+
+def count_reads(monkeypatch):
+    calls = []
+    real = data.read_upload
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(data, "read_upload", counting)
+    return calls
+
+
+def test_changing_a_filter_does_not_read_the_log_again(monkeypatch):
+    calls = count_reads(monkeypatch)
+    app = upload("demo.log", DEMO)
+    assert len(calls) == 1
+    app.multiselect[0].select(Severity.HIGH).run()
+    app.multiselect[1].select("xss").run()
+    app.selectbox[-1].select(app.selectbox[-1].options[0]).run()
+    assert len(calls) == 1
+
+
+def test_changing_the_traffic_period_does_not_read_the_log_again(monkeypatch):
+    calls = count_reads(monkeypatch)
+    app = upload("demo.log", DEMO)
+    for period in ("minute", "day", "hour", "minute"):
+        app.radio[0].set_value(period).run()
+        assert not app.exception
+    assert len(calls) == 1
+
+
+def test_a_different_file_does_read_it_again(monkeypatch):
+    calls = count_reads(monkeypatch)
+    app = upload("demo.log", DEMO)
+    app.file_uploader[0].upload("other.log", DEMO.replace(b"203.0.113", b"198.51.100")).run()
+    assert len(calls) == 2 and not app.exception
+
+
+def test_every_period_gives_the_same_numbers_detections_and_addresses():
+    def seen(period):
+        app = upload("demo.log", DEMO)
+        app.radio[0].set_value(period).run()
+        cards = {m.label: m.value for m in app.metric if m.label in data_labels}
+        return cards, list(app.dataframe[0].value["Rule"]), app.selectbox[-1].options
+
+    data_labels = {"Requests", "Unique IPs", "Error rate", "Data sent", "Skipped lines"}
+    assert seen("minute") == seen("hour") == seen("day")
+
+
+def test_the_period_changes_the_chart_after_the_first_reading():
+    app = upload("demo.log", DEMO)
+    points = {}
+    for period in ("minute", "hour", "day", "minute"):
+        app.radio[0].set_value(period).run()
+        chart = [
+            e.proto
+            for e in app.main
+            if type(e).__name__ == "UnknownElement" and hasattr(e.proto, "spec")
+        ][1]
+        points[period] = len(chart.datasets[0].data.data) if len(chart.datasets) else 0
+    assert points["minute"] != points["day"]
