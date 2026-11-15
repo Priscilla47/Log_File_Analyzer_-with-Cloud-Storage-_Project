@@ -12,6 +12,8 @@ evidence: an escaped backslash is read as one unit, and what follows it is plain
 """
 
 import re
+from collections.abc import Iterable, Iterator
+from itertools import islice
 
 # A backslash and what follows it: another backslash, a quote, or ``x`` and two hex digits.
 _ESCAPE = re.compile(r'\\(?:\\|"|x[0-9A-Fa-f]{2})')
@@ -20,17 +22,11 @@ _ESCAPE = re.compile(r'\\(?:\\|"|x[0-9A-Fa-f]{2})')
 MAX_ESCAPES_EXAMINED = 100_000
 
 
-def detect_log_format(text: str) -> str:
-    """``"nginx"`` if the escapes in ``text`` are Nginx's, otherwise ``"apache"``.
-
-    The format with more evidence wins, and a tie or no evidence gives ``"apache"``. Only the
-    first :data:`MAX_ESCAPES_EXAMINED` escapes are counted.
-    """
+def _format_of(escapes: Iterable[str]) -> str:
+    """The format the escapes (each one as found, backslash first) point to."""
     nginx = apache = 0
-    for number, found in enumerate(_ESCAPE.finditer(text)):
-        if number >= MAX_ESCAPES_EXAMINED:
-            break
-        kind = found[0][1:]
+    for found in islice(escapes, MAX_ESCAPES_EXAMINED):
+        kind = found[1:]
         if kind == "x22":
             nginx += 1
         elif kind in ("\\", '"'):
@@ -44,3 +40,27 @@ def detect_log_format(text: str) -> str:
             elif digits.lower() == digits:
                 apache += 1
     return "nginx" if nginx > apache else "apache"
+
+
+def detect_log_format(text: str) -> str:
+    """``"nginx"`` if the escapes in ``text`` are Nginx's, otherwise ``"apache"``.
+
+    The format with more evidence wins, and a tie or no evidence gives ``"apache"``. Only the
+    first :data:`MAX_ESCAPES_EXAMINED` escapes are counted.
+    """
+    return _format_of(found[0] for found in _ESCAPE.finditer(text))
+
+
+def detect_log_format_lines(lines: Iterable[str]) -> str:
+    """The same as :func:`detect_log_format` for a log given as lines, one at a time.
+
+    An escape never spans two lines, so the answer is the one for the whole text, and the
+    lines after the first :data:`MAX_ESCAPES_EXAMINED` escapes are not even read.
+    """
+
+    def escapes() -> Iterator[str]:
+        for line in lines:
+            for found in _ESCAPE.finditer(line):
+                yield found[0]
+
+    return _format_of(escapes())

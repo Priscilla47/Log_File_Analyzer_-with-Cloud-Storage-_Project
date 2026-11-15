@@ -8,7 +8,7 @@ A name is a *key*: a relative path made of non-empty parts joined by ``/``. It i
 absolute path and never contains ``.`` or ``..``, so a key cannot point outside the storage.
 """
 
-from typing import Protocol
+from typing import Protocol, TextIO
 
 
 class StorageError(OSError):
@@ -52,6 +52,16 @@ class Storage(Protocol):
         invalid bytes replaced, so reading never fails on a badly encoded file.
 
         Raises :class:`MissingKeyError` if the key does not exist.
+        """
+        ...
+
+    def open_text(self, key: str) -> TextIO:
+        """Open ``key`` for reading as text, a line at a time, without loading it all.
+
+        The text is what :meth:`read_text` returns, and lines end at ``\\n``, ``\\r\\n`` or
+        ``\\r`` as when a file is read. Use it in a ``with`` block, which closes it. The key is
+        looked up when this is called, so :class:`MissingKeyError` is raised here, not on the
+        first line; a failure while reading raises :class:`StorageError`.
         """
         ...
 

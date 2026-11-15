@@ -71,7 +71,7 @@ That number comes from synthetic logs made by a simple generator. It shows that 
 The JSON layout is `tool`, `source` (name, log format and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
 
 ### One analysis for every interface (`workflow.py`)
-`read_text` does the slow part (format detection, parsing, the rules) and returns a `Reading`; `build(reading, name, bucket=...)` makes the report for one traffic period from it, so an interface can offer several periods without reading the log again. `analyze_text(text, source_name, ...)` does the whole job from the text of a log to a `Report`: it detects the format, parses, refuses a log where no line can be read (`NothingReadError`), collects the "many lines skipped" warning, applies the rules and builds the report. The command line and the dashboard both call it, so they cannot disagree about a number.
+`read_lines(open_lines)` does the slow part (format detection, parsing, the rules) and returns a `Reading`. It takes a function that opens the log as text and reads it a line at a time, so the log is never held in memory as one text, only the parsed requests are (it opens the log twice: the first pass finds the format and stops as soon as it has seen enough escapes). `read_text` and `read_bytes` are the same for a text and for bytes; `build(reading, name, bucket=...)` makes the report for one traffic period from it, so an interface can offer several periods without reading the log again. `analyze_text(text, source_name, ...)` does the whole job from the text of a log to a `Report`: it detects the format, parses, refuses a log where no line can be read (`NothingReadError`), collects the "many lines skipped" warning, applies the rules and builds the report. The command line (`read_lines` over `storage.open_text`, then `build`) and the dashboard (`read_bytes`, then `build`) share these steps, so they cannot disagree about a number.
 
 ### Interfaces
 - **CLI (`cli.py`, `__main__.py`):** `loginsight analyze` and `loginsight detect`, with a choice of output format. Exit code 0 is success, 1 a problem with a file, 2 wrong usage.
@@ -79,7 +79,7 @@ The JSON layout is `tool`, `source` (name, log format and parse statistics), `su
 
 ### Storage (`storage/`)
 A small interface for reading and writing named data.
-- `base.py`: the `Storage` protocol (`read_text`, `write_bytes`, `list`, `exists`), the key rules (`check_key`: relative, `/`-separated, no `.` or `..`) and the errors `StorageError`, `MissingKeyError` and `InvalidKeyError`.
+- `base.py`: the `Storage` protocol (`read_text`, `open_text`, `write_bytes`, `list`, `exists`; `open_text` gives the lines of a file one at a time so a big log need not fit in memory as text), the key rules (`check_key`: relative, `/`-separated, no `.` or `..`) and the errors `StorageError`, `MissingKeyError` and `InvalidKeyError`.
 - `local.py`: `LocalStorage`, which maps keys to files below a root folder, refuses anything that leads outside it (including through symbolic links), and writes atomically through a hidden temporary file.
 
 - `s3.py`: `S3Storage`, the same protocol on an Amazon S3 bucket below an optional prefix. `boto3` is imported only when a client is first needed, so it is an optional extra; credentials come from the standard AWS places and are never read or kept here; every failure of the service becomes a `StorageError` with one readable message (a missing object a `MissingKeyError`); a write is one request, so it is atomic. See [CLOUD_STORAGE.md](CLOUD_STORAGE.md).

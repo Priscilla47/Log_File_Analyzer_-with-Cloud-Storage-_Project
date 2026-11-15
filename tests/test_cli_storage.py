@@ -78,7 +78,7 @@ def test_a_storage_error_without_a_message_shows_its_class(virtual, monkeypatch,
     def broken(path):
         raise MissingKeyError("odd")
 
-    monkeypatch.setattr(cli, "read_text", broken)
+    monkeypatch.setattr(cli, "open_text", broken)
     err = run(capsys, "analyze", "x.log")[2]
     assert err == "loginsight: error: cannot read x.log: MissingKeyError\n"
 
@@ -137,3 +137,47 @@ class TestOnTheRealDisk:
         path = tmp_path / "mac.log"
         path.write_bytes((GOOD.rstrip("\n") + "\r" + ATTACK.rstrip("\n") + "\r").encode())
         assert re.search(r"Requests: +2\n", run(capsys, "analyze", path)[1])
+
+
+class TestStreamingTheLog:
+    """The log is read a line at a time through ``open_text``, never as one text."""
+
+    def test_a_log_is_not_read_as_one_text(self, tmp_path, capsys, monkeypatch):
+        from loginsight.storage import LocalStorage
+
+        def refuse(self, key):
+            raise AssertionError("the log was read as one text")
+
+        monkeypatch.setattr(LocalStorage, "read_text", refuse)
+        (tmp_path / "a.log").write_text(GOOD + ATTACK)
+        status, out, _ = run(capsys, "analyze", tmp_path / "a.log", "--format", "json")
+        assert status == EXIT_OK and json.loads(out)["summary"]["total_requests"] == 2
+
+    def test_a_log_in_the_virtual_storage_is_read_through_open_text(self, virtual, capsys):
+        from loginsight.storage import locations
+
+        locations.LocalStorage("/virtual").write_bytes("a.log", (GOOD + ATTACK).encode())
+        status, out, _ = run(capsys, "analyze", "/virtual/a.log", "--format", "json")
+        assert status == EXIT_OK and json.loads(out)["summary"]["total_requests"] == 2
+
+    def test_the_same_report_as_before_for_every_line_ending(self, tmp_path, capsys):
+        reports = []
+        for name, ending in (("lf", "\n"), ("crlf", "\r\n"), ("cr", "\r")):
+            (tmp_path / f"{name}.log").write_bytes(((GOOD + ATTACK).replace("\n", ending)).encode())
+            out = run(capsys, "detect", tmp_path / f"{name}.log", "--format", "json")[1]
+            report = json.loads(out)
+            report["source"]["name"] = "x.log"
+            reports.append(report)
+        assert reports[0] == reports[1] == reports[2]
+        assert reports[0]["summary"]["total_requests"] == 2
+
+    def test_a_directory_is_a_readable_problem_and_not_a_traceback(self, tmp_path, capsys):
+        status, out, err = run(capsys, "analyze", tmp_path)
+        assert (status, out) == (EXIT_PROBLEM, "")
+        assert err.startswith(f"loginsight: error: cannot read {tmp_path}:")
+
+    def test_a_log_where_no_line_is_readable_closes_the_file_and_says_so(self, tmp_path, capsys):
+        (tmp_path / "junk.log").write_text("junk\nmore junk\n")
+        status, out, err = run(capsys, "analyze", tmp_path / "junk.log")
+        assert (status, out) == (EXIT_PROBLEM, "")
+        assert "none of the 2 lines" in err and "no_match: 2" in err

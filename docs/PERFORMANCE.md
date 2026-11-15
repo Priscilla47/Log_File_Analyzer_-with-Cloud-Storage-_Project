@@ -30,4 +30,17 @@ So a log at the limit takes about twenty seconds to appear on this machine and i
 3. Start `loginsight dashboard`, choose the file, and time it with the browser's developer tools or a script (see [BROWSER_CHECK.md](BROWSER_CHECK.md) for how the browser was driven).
 4. For the reading alone, time `loginsight.dashboard.data.read_upload(raw, "big.log", limit=data.UPLOAD_LIMIT_BYTES)` in a Python process.
 
-The command line does not have this limit; reading a big file there is the next piece of work (issue #84).
+## The command line: a log is read a line at a time
+
+The command line has no size limit, and it does not hold the log as text. `workflow.read_lines` reads the file a line at a time (through `Storage.open_text`, so a local file and an S3 object alike), so what stays in memory is the list of parsed requests and not also a copy of the whole text, and a log in a bucket is streamed instead of downloaded in one piece.
+
+Measured with `loginsight analyze big.log --format json` on the same 49.8 MB log and machine, twice each:
+
+| | Before (the text read whole) | After (read line by line) |
+| --- | --- | --- |
+| Time | 15.1 s, 15.0 s | 15.0 s, 14.9 s |
+| Peak memory | 480 MB, 480 MB | 251 MB, 251 MB |
+
+So about half the memory for the same time (the second pass that finds the format adds nothing measurable). The parsed requests are still all kept, because the detection rules and the report look at all of them; a log far bigger than memory would need those to be streamed too, which is not done. `pytest -m slow tests/test_streaming_memory.py -s` repeats the comparison on a 31 MB log (273 MB against 147 MB) and fails if the saving disappears.
+
+The dashboard reads the uploaded bytes the same way (`read_bytes`), so it no longer makes a second copy of the log as text.

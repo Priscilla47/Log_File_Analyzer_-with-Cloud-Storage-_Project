@@ -211,3 +211,24 @@ class TestList:
 
     def test_a_missing_root_lists_nothing(self, tmp_path):
         assert LocalStorage(tmp_path / "absent").list("charts") == []
+
+
+class TestOpeningText:
+    def test_it_is_a_real_file_opened_for_reading_text(self, tmp_path):
+        (tmp_path / "a.log").write_text("x\n")
+        with LocalStorage(tmp_path).open_text("a.log") as file:
+            assert file.encoding.lower().replace("_", "-") == "utf-8-sig" and not file.writable()
+
+    def test_a_link_out_of_the_folder_is_refused(self, tmp_path):
+        (tmp_path / "outside.txt").write_text("secret")
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "link").symlink_to(tmp_path / "outside.txt")
+        with pytest.raises(InvalidKeyError):
+            LocalStorage(root).open_text("link")
+
+    def test_a_directory_is_not_a_missing_key(self, tmp_path):
+        (tmp_path / "folder").mkdir()
+        with pytest.raises(IsADirectoryError) as raised:
+            LocalStorage(tmp_path).open_text("folder")
+        assert not isinstance(raised.value, MissingKeyError)

@@ -348,3 +348,73 @@ class TestWithoutBoto3EveryOperation:
         with pytest.raises(StorageError) as raised:
             call(S3Storage("logs"))
         assert str(raised.value) == s3.INSTALL_HINT
+
+
+class FakeBody:
+    """A streaming body that counts what was asked of it, and can fail part-way."""
+
+    def __init__(self, data, fail_after=None, error=None):
+        self.data, self.position, self.reads, self.closed = data, 0, [], False
+        self.fail_after, self.error = fail_after, error
+
+    def read(self, amount=None):
+        self.reads.append(amount)
+        if self.fail_after is not None and self.position >= self.fail_after:
+            raise self.error
+        amount = len(self.data) if amount is None else amount
+        chunk = self.data[self.position : self.position + amount]
+        self.position += len(chunk)
+        return chunk
+
+    def close(self):
+        self.closed = True
+
+
+class FakeClient:
+    def __init__(self, body):
+        self.body = body
+
+    def get_object(self, Bucket, Key):  # noqa: N803 - boto3's own names
+        return {"Body": self.body}
+
+
+class TestStreaming:
+    def test_the_object_is_read_in_pieces_not_all_at_once(self):
+        body = FakeBody(b"line\n" * 100_000)
+        with S3Storage("logs", client=FakeClient(body)).open_text("a.log") as file:
+            assert next(file) == "line\n"
+        assert max(body.reads) <= 1 << 20 and None not in body.reads
+        assert body.position < 1 << 20  # a few lines read, the half megabyte after them was not
+
+    def test_closing_early_closes_the_connection_and_reads_no_more(self):
+        body = FakeBody(b"x\n" * 1_000_000)
+        with S3Storage("logs", client=FakeClient(body)).open_text("a.log") as file:
+            next(file)
+        assert body.closed and body.position < 1 << 20
+
+    def test_a_failure_while_reading_is_a_storage_error_with_a_message(self):
+        body = FakeBody(b"ok\n" * 10, fail_after=10, error=ConnectionResetError("reset by peer"))
+        with S3Storage("logs", client=FakeClient(body)).open_text("a.log") as file:
+            with pytest.raises(StorageError, match=r"cannot read s3://logs/a.log: reset by peer"):
+                list(file)
+
+    def test_a_storage_error_raised_while_reading_is_not_wrapped_again(self):
+        body = FakeBody(b"ok\n" * 10, fail_after=0, error=StorageError("already readable"))
+        with S3Storage("logs", client=FakeClient(body)).open_text("a.log") as file:
+            with pytest.raises(StorageError, match="^already readable$"):
+                list(file)
+
+    def test_a_failure_to_open_is_a_storage_error(self, s3_bucket):
+        storage = S3Storage("no-such-bucket", client=s3_bucket)
+        with pytest.raises(StorageError, match="no-such-bucket"):
+            storage.open_text("a.log")
+
+    def test_reading_the_whole_text_still_keeps_every_byte(self):
+        body = FakeBody(b"a\r\nb\rc\n")
+        assert S3Storage("logs", client=FakeClient(body)).read_text("k") == "a\r\nb\rc\n"
+        assert body.closed
+
+    def test_a_failure_while_reading_the_whole_text_is_a_storage_error(self):
+        body = FakeBody(b"ok", fail_after=0, error=OSError("broken pipe"))
+        with pytest.raises(StorageError, match="cannot read s3://logs/k: broken pipe"):
+            S3Storage("logs", client=FakeClient(body)).read_text("k")

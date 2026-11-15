@@ -500,7 +500,7 @@ class TestUnexpectedOutputProblems:
         def interrupted(*args, **kwargs):
             raise KeyboardInterrupt
 
-        monkeypatch.setattr(cli, "analyze_text", interrupted)
+        monkeypatch.setattr(cli, "read_lines", interrupted)
         status, out, err = run(capsys, "analyze", DEMO)
         assert status == cli.EXIT_INTERRUPTED == 130
         assert out == "" and "interrupted" in err and "Traceback" not in err

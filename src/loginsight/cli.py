@@ -28,8 +28,8 @@ from loginsight.reporting.report import render_json, render_markdown
 from loginsight.reporting.text import printable, render_text
 from loginsight.reporting.writers import write_to_storage
 from loginsight.storage import InvalidKeyError, StorageError
-from loginsight.storage.locations import read_text, show, storage_for_folder
-from loginsight.workflow import NothingReadError, analyze_text
+from loginsight.storage.locations import open_text, read_text, show, storage_for_folder
+from loginsight.workflow import NothingReadError, build, read_lines
 
 PROG = "loginsight"
 
@@ -253,28 +253,24 @@ def _run(args: argparse.Namespace) -> int:
         )
     except OSError as error:
         return _fail(_problem(error, f"cannot read {printable(args.rules)}"))
-    try:
-        text = read_text(args.file)
-    except OSError as error:
-        return _fail(_problem(error, f"cannot read {printable(args.file)}"))
     minimum = Severity.from_name(args.min_severity) if args.command == "detect" else Severity.LOW
     try:
-        analysis = analyze_text(
-            text,
-            args.file,
-            rules=rules,
-            min_severity=minimum,
-            top_n=getattr(args, "top", 10),
-            bucket=getattr(args, "bucket", "hour"),
-        )
+        reading = read_lines(lambda: open_text(args.file), rules=rules, min_severity=minimum)
+    except OSError as error:
+        return _fail(_problem(error, f"cannot read {printable(args.file)}"))
     except NothingReadError as error:
         return _fail(
             f"none of the {error.total_lines} lines in {printable(args.file)} could be read "
             f"as an access-log entry ({error.reasons})"
         )
-    for warning in analysis.warnings:
+    report = build(
+        reading,
+        args.file,
+        top_n=getattr(args, "top", 10),
+        bucket=getattr(args, "bucket", "hour"),
+    )
+    for warning in reading.warnings:
         _warn(warning)
-    report = analysis.report
 
     if args.output is not None:
         try:

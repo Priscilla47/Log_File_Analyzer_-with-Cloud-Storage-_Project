@@ -1,5 +1,7 @@
 """An in-memory Storage, used to prove that code depends on the interface and not on files."""
 
+import io
+
 from loginsight.storage import MissingKeyError, check_key, check_prefix
 
 
@@ -12,6 +14,13 @@ class MemoryStorage:
             return self.files[check_key(key)].decode("utf-8-sig", errors="replace")
         except KeyError:
             raise MissingKeyError(2, "No such file or directory", key) from None
+
+    def open_text(self, key):
+        try:
+            data = self.files[check_key(key)]
+        except KeyError:
+            raise MissingKeyError(2, "No such file or directory", key) from None
+        return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8-sig", errors="replace")
 
     def write_bytes(self, key, data):
         self.files[check_key(key)] = bytes(data)

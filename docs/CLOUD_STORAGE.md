@@ -37,7 +37,7 @@ text = storage.read_text("access.log")
 storage.write_bytes("report.json", b"{}")
 ```
 
-An `S3Storage` follows the same promises as `LocalStorage` (the tests run one shared contract against both): the same key rules (no leading `/`, no `.` or `..`), reading drops a byte order mark and replaces invalid bytes, a write replaces the whole object in one request so a reader never sees half of it, and `list` returns sorted keys.
+An `S3Storage` follows the same promises as `LocalStorage` (the tests run one shared contract against both): the same key rules (no leading `/`, no `.` or `..`), reading (`read_text`, or `open_text` a line at a time) drops a byte order mark and replaces invalid bytes, a write replaces the whole object in one request so a reader never sees half of it, and `list` returns sorted keys.
 
 ## Credentials
 
@@ -67,4 +67,4 @@ The tests use [moto](https://github.com/getmoto/moto), which pretends to be S3 i
 
 ## What is not covered
 
-Other providers (Google Cloud Storage, Azure Blob Storage), presigned URLs, and multipart upload of very large reports: a report is small and goes in one request. Reading is also done in one request, so a log has to fit in memory like a local one does (see the streaming work in the project issues).
+Other providers (Google Cloud Storage, Azure Blob Storage), presigned URLs, and multipart upload of very large reports: a report is small and goes in one request. A log is read as a stream, a line at a time, so it does not have to fit in memory as one text (the parsed requests do; see [PERFORMANCE.md](PERFORMANCE.md)). Reading it twice, once to find its format and once to parse it, costs two requests, and the first stops early.

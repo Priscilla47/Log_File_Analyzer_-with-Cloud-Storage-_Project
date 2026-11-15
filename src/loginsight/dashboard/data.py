@@ -13,7 +13,7 @@ from loginsight.dashboard.profile import IpProfile
 from loginsight.parsing.models import LogEntry
 from loginsight.reporting.report import Report, human_bytes
 from loginsight.reporting.text import printable
-from loginsight.workflow import NothingReadError, Reading, build, read_text
+from loginsight.workflow import NothingReadError, Reading, build, read_bytes
 
 APP_TITLE = "LogInsight"
 EMPTY_MESSAGE = (
@@ -214,7 +214,7 @@ def read_upload(raw: bytes, name: str, *, limit: int = UPLOAD_LIMIT_BYTES) -> Up
             ),
         )
     try:
-        reading = read_text(raw.decode("utf-8-sig", errors="replace"))
+        reading = read_bytes(raw)
     except NothingReadError as error:
         return Upload(
             name=name,

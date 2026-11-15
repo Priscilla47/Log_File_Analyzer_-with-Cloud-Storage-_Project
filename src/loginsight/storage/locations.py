@@ -7,6 +7,7 @@ in an S3 bucket, and this is the only place that knows the difference.
 import errno
 import os
 from pathlib import Path
+from typing import TextIO
 
 from loginsight.storage.base import InvalidKeyError, Storage, check_key
 from loginsight.storage.local import LocalStorage
@@ -40,8 +41,8 @@ def storage_for_folder(location: str) -> Storage:
     return LocalStorage(location)
 
 
-def read_text(location: str) -> str:
-    """The text of the file at ``location``, through the storage layer.
+def _source(location: str) -> tuple[Storage, str]:
+    """The storage and the key of a file named by ``location``.
 
     A local path is resolved first, so a link such as ``/var/log/access.log`` that points
     elsewhere works and the storage is confined to the folder that really holds the file. An
@@ -51,11 +52,26 @@ def read_text(location: str) -> str:
         bucket, key = split_s3(location)
         if not key:
             raise InvalidKeyError(f"invalid location {location!r}: it names a bucket, not a file")
-        return S3Storage(bucket).read_text(key)
+        return S3Storage(bucket), key
     path = Path(location).resolve()
     if not path.name:  # the root of the file system
         raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), location)
-    return LocalStorage(path.parent).read_text(path.name)
+    return LocalStorage(path.parent), path.name
+
+
+def read_text(location: str) -> str:
+    """The text of the file at ``location``, through the storage layer."""
+    storage, key = _source(location)
+    return storage.read_text(key)
+
+
+def open_text(location: str) -> TextIO:
+    """The file at ``location`` opened for reading a line at a time, through the storage layer.
+
+    It is looked up now, so a missing file raises here. Use it in a ``with`` block.
+    """
+    storage, key = _source(location)
+    return storage.open_text(key)
 
 
 def show(location: str, key: str) -> str:

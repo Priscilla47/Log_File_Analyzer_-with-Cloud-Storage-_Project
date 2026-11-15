@@ -172,3 +172,165 @@ class TestReadingThenBuilding:
         reading = read_text(GOOD)
         with pytest.raises(AttributeError):
             reading.log_format = "nginx"  # type: ignore[misc]
+
+
+def _file_opener(path, opened):
+    """An ``open_lines`` that records every file it opens."""
+
+    def open_lines():
+        file = open(path, encoding="utf-8-sig", errors="replace")
+        opened.append(file)
+        return file
+
+    return open_lines
+
+
+# the same awkward logs the parsers are tested with: endings, a byte order mark, junk
+LOGS = {
+    "unix": GOOD * 3 + SQLI,
+    "windows": (GOOD * 3 + SQLI).replace("\n", "\r\n"),
+    "old mac": (GOOD * 3 + SQLI).replace("\n", "\r"),
+    "mixed": GOOD + "\r\n" + SQLI + "\r" + GOOD + "junk\r\n",
+    "junk between": GOOD + "junk\n\n" + SQLI + "more junk\n",
+    "mostly junk": GOOD + "junk\n" * 5,
+    "empty": "",
+}
+
+
+class TestReadingLines:
+    @pytest.mark.parametrize("name", LOGS)
+    def test_it_gives_what_reading_the_text_gives(self, name, tmp_path):
+        from loginsight.workflow import read_lines, read_text
+
+        path = tmp_path / "a.log"
+        path.write_bytes(LOGS[name].encode())
+        opened = []
+        streamed = read_lines(_file_opener(path, opened))
+        assert streamed == read_text(LOGS[name])
+
+    @pytest.mark.parametrize("name", ["demo.log", "demo_nginx.log", "clean.log"])
+    def test_it_gives_the_same_report_on_the_samples(self, name):
+        from loginsight.workflow import build, read_lines
+
+        text = (SAMPLES / name).read_text()
+        streamed = build(read_lines(_file_opener(SAMPLES / name, [])), name)
+        assert streamed == analyze_text(text, name).report
+
+    def test_a_byte_order_mark_and_invalid_bytes_are_handled_like_a_file(self, tmp_path):
+        from loginsight.workflow import read_bytes, read_lines
+
+        raw = b"\xef\xbb\xbf" + (GOOD * 2).encode() + b"bad \xff\xfe line\n" + SQLI.encode()
+        path = tmp_path / "a.log"
+        path.write_bytes(raw)
+        reading = read_lines(_file_opener(path, []))
+        assert reading == read_bytes(raw)
+        assert len(reading.entries) == 3 and reading.result.stats.skipped == 1
+
+    def test_it_opens_the_log_twice_and_closes_both(self, tmp_path):
+        from loginsight.workflow import read_lines
+
+        path = tmp_path / "a.log"
+        path.write_text(GOOD)
+        opened = []
+        read_lines(_file_opener(path, opened))
+        assert len(opened) == 2 and all(file.closed for file in opened)
+
+    def test_the_file_is_closed_when_nothing_can_be_read(self, tmp_path):
+        from loginsight.workflow import read_lines
+
+        path = tmp_path / "a.log"
+        path.write_text("junk\n")
+        opened = []
+        with pytest.raises(NothingReadError):
+            read_lines(_file_opener(path, opened))
+        assert opened and all(file.closed for file in opened)
+
+    def test_the_file_is_closed_when_reading_fails(self, tmp_path):
+        from loginsight.workflow import read_lines
+
+        class Broken:
+            closed = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                Broken.closed = True
+
+            def __iter__(self):
+                raise OSError("disk went away")
+
+        with pytest.raises(OSError, match="disk went away"):
+            read_lines(Broken)  # type: ignore[arg-type]
+        assert Broken.closed
+
+    def test_a_log_is_never_held_as_one_text(self, tmp_path):
+        """Only lines are asked of the file: nothing calls ``read()`` for all of it."""
+        from loginsight.workflow import read_lines
+
+        path = tmp_path / "a.log"
+        path.write_text(GOOD * 3 + SQLI)
+
+        class Wrapper:
+            def __init__(self):
+                self.inner = open(path, encoding="utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self.inner.close()
+
+            def __iter__(self):
+                return iter(self.inner)
+
+            def read(self, *args):
+                raise AssertionError("the whole log was read as one text")
+
+        assert len(read_lines(Wrapper).entries) == 4
+
+    def test_the_options_apply(self, tmp_path):
+        from loginsight.workflow import read_lines
+
+        path = tmp_path / "a.log"
+        path.write_text(GOOD + SQLI)
+        opener = _file_opener(path, [])
+        assert read_lines(opener, min_severity=Severity.CRITICAL).detections == []
+        none = type(load_rules())(
+            signatures=(), brute_force=load_rules().brute_force, scanner=load_rules().scanner
+        )
+        assert read_lines(opener, rules=none).detections == []
+
+    def test_reading_bytes_equals_reading_their_text(self):
+        from loginsight.workflow import read_bytes, read_text
+
+        for text in LOGS.values():
+            assert read_bytes(text.encode()) == read_text(text)
+
+    def test_the_bytes_and_the_options(self):
+        from loginsight.workflow import read_bytes
+
+        raw = (GOOD + SQLI).encode()
+        assert read_bytes(raw, min_severity=Severity.CRITICAL).detections == []
+        assert len(read_bytes(raw).detections) == 1
+        with pytest.raises(NothingReadError):
+            read_bytes(b"junk\n")
+
+
+class TestTheDetectedFormatIsUsedToParse:
+    NGINX = GOOD.replace('"x"', r'"a\x22b \xC3\xA9"')
+
+    def test_an_nginx_log_is_parsed_with_its_escapes_decoded(self, tmp_path):
+        from loginsight.workflow import read_lines
+
+        path = tmp_path / "n.log"
+        path.write_text(self.NGINX * 2)
+        reading = read_lines(_file_opener(path, []))
+        assert reading.log_format == "nginx"
+        assert [e.user_agent for e in reading.entries] == ['a"b é'] * 2
+
+    def test_the_same_for_text_and_bytes(self):
+        from loginsight.workflow import read_bytes, read_text
+
+        for reading in (read_text(self.NGINX), read_bytes(self.NGINX.encode())):
+            assert reading.log_format == "nginx" and reading.entries[0].user_agent == 'a"b é'

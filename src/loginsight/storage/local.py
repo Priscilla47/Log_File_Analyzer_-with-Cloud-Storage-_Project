@@ -4,6 +4,7 @@ import errno
 import os
 import uuid
 from pathlib import Path
+from typing import TextIO
 
 from loginsight.storage.base import InvalidKeyError, MissingKeyError, check_key, check_prefix
 
@@ -29,6 +30,13 @@ class LocalStorage:
         path = self._path(key)
         try:
             return path.read_bytes().decode("utf-8-sig", errors="replace")
+        except FileNotFoundError as error:
+            raise MissingKeyError(errno.ENOENT, os.strerror(errno.ENOENT), key) from error
+
+    def open_text(self, key: str) -> TextIO:
+        path = self._path(key)
+        try:
+            return open(path, encoding="utf-8-sig", errors="replace")
         except FileNotFoundError as error:
             raise MissingKeyError(errno.ENOENT, os.strerror(errno.ENOENT), key) from error
 

@@ -5,13 +5,16 @@ about a number: the format detection, the parsing, the checks on how much was re
 detection rules and the report all happen here, once.
 """
 
+import io
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TextIO
 
 from loginsight.detection import Detection, Severity, detect, load_rules
 from loginsight.detection.ruleset import RuleSet
-from loginsight.parsing.detect import detect_log_format
+from loginsight.parsing.detect import detect_log_format_lines
 from loginsight.parsing.models import LogEntry, ParseResult, ParseStats
-from loginsight.parsing.parser import parse_text
+from loginsight.parsing.parser import parse_lines
 from loginsight.reporting.report import Report, build_report
 
 # More skipped lines than this share of the log earns a warning.
@@ -70,17 +73,25 @@ class Analysis:
     entries: list[LogEntry] = field(default_factory=list)
 
 
-def read_text(
-    text: str, *, rules: RuleSet | None = None, min_severity: Severity = Severity.LOW
+def read_lines(
+    open_lines: Callable[[], TextIO],
+    *,
+    rules: RuleSet | None = None,
+    min_severity: Severity = Severity.LOW,
 ) -> Reading:
-    """Read the text of an access log: detect its format, parse it and apply the rules.
+    """Read an access log a line at a time: detect its format, parse it and apply the rules.
 
-    The ``rules`` are the built-in ones for ``None`` and detections below ``min_severity`` are
-    dropped. Raises :class:`NothingReadError` if the text has lines and none could be read. An
-    empty text is not an error.
+    ``open_lines`` opens the log as text and is called twice, once to detect the format (which
+    stops reading early) and once to parse, so the whole text is never held in memory, only the
+    parsed requests. Each opened file is closed. The ``rules`` are the built-in ones for
+    ``None`` and detections below ``min_severity`` are dropped. Raises
+    :class:`NothingReadError` if the log has lines and none could be read. An empty log is not
+    an error.
     """
-    log_format = detect_log_format(text)
-    result = parse_text(text, log_format)
+    with open_lines() as lines:
+        log_format = detect_log_format_lines(lines)
+    with open_lines() as lines:
+        result = parse_lines(lines, log_format)
     stats = result.stats
     if stats.total_lines and not stats.parsed:
         raise NothingReadError(stats)
@@ -93,6 +104,27 @@ def read_text(
     detections = detect(result.entries, rules if rules is not None else load_rules())
     detections = [d for d in detections if d.severity >= min_severity]
     return Reading(result=result, log_format=log_format, detections=detections, warnings=warnings)
+
+
+def read_text(
+    text: str, *, rules: RuleSet | None = None, min_severity: Severity = Severity.LOW
+) -> Reading:
+    """Read the text of an access log: :func:`read_lines` over the lines of the text."""
+    return read_lines(
+        lambda: io.StringIO(text, newline=None), rules=rules, min_severity=min_severity
+    )
+
+
+def read_bytes(
+    raw: bytes, *, rules: RuleSet | None = None, min_severity: Severity = Severity.LOW
+) -> Reading:
+    """Read the bytes of an access log as the command line reads a file: UTF-8, a leading byte
+    order mark dropped, invalid bytes replaced. No second copy of the log as text is made."""
+
+    def open_lines() -> TextIO:
+        return io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8-sig", errors="replace")
+
+    return read_lines(open_lines, rules=rules, min_severity=min_severity)
 
 
 def build(reading: Reading, source_name: str, *, top_n: int = 10, bucket: str = "hour") -> Report:

@@ -11,8 +11,10 @@ Keys follow the same rules as every other backend (:func:`check_key`), below an 
 """
 
 import errno
+import io
 import os
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TextIO
 
 from loginsight.storage.base import (
     InvalidKeyError,
@@ -34,6 +36,38 @@ def _code(error: Exception) -> str:
     if isinstance(response, dict):
         return str(response.get("Error", {}).get("Code", ""))
     return ""
+
+
+class _Body(io.RawIOBase):
+    """An S3 response body as a binary stream, so the text of an object can be read lazily.
+
+    A failure while reading is turned into a :class:`StorageError` by ``fail``, like every
+    other failure of the service.
+    """
+
+    def __init__(self, body: Any, fail: Callable[[Exception], StorageError]) -> None:
+        super().__init__()
+        self._body = body
+        self._fail = fail
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        try:
+            data = self._body.read(len(buffer))
+        except StorageError:
+            raise
+        except Exception as error:
+            raise self._fail(error) from error
+        buffer[: len(data)] = data
+        return len(data)
+
+    def close(self) -> None:
+        try:
+            self._body.close()
+        finally:
+            super().close()
 
 
 def make_client() -> Any:
@@ -77,17 +111,26 @@ class S3Storage:
         where = f"s3://{self.bucket}/{self.prefix}{key}".rstrip("/")
         return StorageError(f"cannot {action} {where}: {reason}")
 
-    def read_text(self, key: str) -> str:
+    def _get(self, key: str) -> Any:
+        """The streaming body of the object ``key``."""
         name = self._name(key)
         try:
-            body = self.client.get_object(Bucket=self.bucket, Key=name)["Body"].read()
+            return self.client.get_object(Bucket=self.bucket, Key=name)["Body"]
         except StorageError:
             raise
         except Exception as error:
             if _code(error) in _MISSING:
                 raise MissingKeyError(errno.ENOENT, os.strerror(errno.ENOENT), key) from error
             raise self._fail("read", key, error) from error
-        return body.decode("utf-8-sig", errors="replace")
+
+    def read_text(self, key: str) -> str:
+        body = _Body(self._get(key), lambda error: self._fail("read", key, error))
+        with body:
+            return body.readall().decode("utf-8-sig", errors="replace")
+
+    def open_text(self, key: str) -> TextIO:
+        body = _Body(self._get(key), lambda error: self._fail("read", key, error))
+        return io.TextIOWrapper(io.BufferedReader(body), encoding="utf-8-sig", errors="replace")
 
     def write_bytes(self, key: str, data: bytes) -> None:
         name = self._name(key)
