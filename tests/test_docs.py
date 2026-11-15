@@ -179,3 +179,37 @@ class TestStructure:
 
     def test_nothing_is_called_planned_that_exists(self):
         assert "planned design" not in self.text
+
+
+class TestImages:
+    IMAGE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+
+    @pytest.mark.parametrize("path", MARKDOWN_FILES, ids=lambda path: path.name)
+    def test_every_image_exists_and_has_a_description(self, path):
+        for alt, target in self.IMAGE.findall(path.read_text(encoding="utf-8")):
+            if re.match(r"[a-z][a-z0-9+.-]*:", target):
+                continue  # a web address
+            assert (path.parent / target).is_file(), f"{path.name}: missing image {target}"
+            assert len(alt) >= 15, f"{path.name}: the image {target} needs a real description"
+
+    def test_the_dashboard_is_shown_in_the_readme_and_the_usage_guide(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        usage = USAGE.read_text(encoding="utf-8")
+        assert "docs/images/dashboard-overview.png" in readme
+        assert (
+            "images/dashboard-overview.png" in usage and "images/dashboard-detections.png" in usage
+        )
+
+    def test_the_images_are_small_enough_for_a_repository(self):
+        sizes = {path.name: path.stat().st_size for path in (DOCS / "images").glob("*.png")}
+        assert sizes and all(size < 200_000 for size in sizes.values()), sizes
+
+    def test_the_images_show_only_synthetic_data(self):
+        # the page in the pictures was made from data/samples/demo.log, whose addresses all come
+        # from the ranges reserved for documentation (see data/samples/README.md)
+        text = (DOCS / "USAGE.md").read_text(encoding="utf-8")
+        assert "data/samples/demo.log" in text and "synthetic" in text
+
+    def test_the_image_finder_finds_images_and_not_links(self):
+        found = self.IMAGE.findall("see [a](x.md) and ![a picture of a chart](p.png)")
+        assert found == [("a picture of a chart", "p.png")]

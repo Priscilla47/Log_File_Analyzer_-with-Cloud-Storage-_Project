@@ -80,7 +80,17 @@ Choose an access log on the page (up to 50 MB; for a bigger one use the command 
 
 Below the numbers are three charts: responses by status class, traffic over time (requests and errors; choose to group it by minute, hour or day above the numbers; the command line offers minute and hour), and the most requested paths. The colours were picked to be told apart by people with the usual kinds of colour blindness. If the log covers too long a time to list every quiet period, the traffic chart shows only the periods with requests and says so.
 
-**Status:** the numbers and charts are in; the table of detections is still to come.
+![The dashboard after choosing the demo log: the headline numbers, the status chart and the traffic over time](images/dashboard-overview.png)
+
+The traffic starts grouped by the length of the log: by the minute for a log of up to three hours, by the hour up to three days, by the day beyond that. A log with only one period in it is drawn as bars, because a line needs two points.
+
+Under the charts is the table of **detections**: the severity (a coloured square and the word, so the meaning never depends on colour), the class, the rule, the address, the time in UTC, how many requests it covers and the evidence, shown as plain text (control characters appear as `\x1b`, never acted on). It can be narrowed by severity, class, address and a time range; each value shows how many detections it has, and the filters combine. "Showing 34 of 34 detections" says how many are left.
+
+Last, **One address** lets you choose an address (those with detections first, then the busiest, at most 200) and shows everything it did: its requests, when it was first and last seen, the responses it got, the paths it asked for and its detections.
+
+![The detections table with its filters, and the view of one address](images/dashboard-detections.png)
+
+Reading a big log takes a moment; the page keeps the result, so changing a filter, an address or the traffic period afterwards is instant. Choosing another file reads that one instead. The screenshots show `data/samples/demo.log`, a synthetic log; what was looked at in a real browser, and what that found, is in [BROWSER_CHECK.md](BROWSER_CHECK.md).
 
 ## Output formats
 
