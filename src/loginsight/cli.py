@@ -6,11 +6,9 @@ file, 2 wrong usage.
 """
 
 import argparse
-import errno
 import os
 import sys
 from collections.abc import Sequence
-from pathlib import Path
 
 from loginsight import __version__
 from loginsight.detection import Severity, detect, load_rules
@@ -20,7 +18,8 @@ from loginsight.parsing.parser import parse_text
 from loginsight.reporting.report import build_report, render_json, render_markdown
 from loginsight.reporting.text import printable, render_text
 from loginsight.reporting.writers import write_to_storage
-from loginsight.storage import LocalStorage
+from loginsight.storage import InvalidKeyError, StorageError
+from loginsight.storage.locations import read_text, show, storage_for_folder
 
 PROG = "loginsight"
 # More skipped lines than this share of the file earns a warning on stderr.
@@ -124,16 +123,17 @@ def _silence_stdout() -> None:
         pass
 
 
-def _read_file(name: str) -> str:
-    """The text of the file ``name``, read through the storage layer.
+def _problem(error: OSError, what: str) -> str:
+    """One line for a problem with a file or a bucket: ``what`` and the reason.
 
-    The file is resolved first, so a link such as ``/var/log/access.log`` that points elsewhere
-    works, and the storage is confined to the folder that really holds the file.
+    A failure of a cloud service already says what it was doing and where (see
+    :class:`loginsight.storage.StorageError`), so its message is used as it is.
     """
-    path = Path(name).resolve()
-    if not path.name:  # the root of the file system
-        raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), name)
-    return LocalStorage(path.parent).read_text(path.name)
+    if type(error) is StorageError and str(error):
+        return str(error)
+    if isinstance(error, InvalidKeyError):
+        return f"{what}: {error}"
+    return f"{what}: {error.strerror or type(error).__name__}"
 
 
 def _load_rules(name: str | None) -> RuleSet:
@@ -143,7 +143,7 @@ def _load_rules(name: str | None) -> RuleSet:
     """
     if name is None:
         return load_rules()
-    return parse_rules(_read_file(name), source=name)
+    return parse_rules(read_text(name), source=name)
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -154,13 +154,11 @@ def _run(args: argparse.Namespace) -> int:
             "\n".join(printable(line) if line else line for line in str(error).split("\n"))
         )
     except OSError as error:
-        reason = error.strerror or type(error).__name__
-        return _fail(f"cannot read {printable(args.rules)}: {reason}")
+        return _fail(_problem(error, f"cannot read {printable(args.rules)}"))
     try:
-        text = _read_file(args.file)
+        text = read_text(args.file)
     except OSError as error:
-        reason = error.strerror or type(error).__name__
-        return _fail(f"cannot read {args.file}: {reason}")
+        return _fail(_problem(error, f"cannot read {printable(args.file)}"))
     result = parse_text(text, detect_log_format(text))
 
     stats = result.stats
@@ -191,11 +189,10 @@ def _run(args: argparse.Namespace) -> int:
 
     if args.output is not None:
         try:
-            keys = write_to_storage(report, LocalStorage(args.output))
+            keys = write_to_storage(report, storage_for_folder(args.output))
         except OSError as error:
-            reason = error.strerror or type(error).__name__
-            return _fail(f"cannot write to {args.output}: {reason}")
-        _print("".join(f"{Path(args.output) / key}\n" for key in keys))
+            return _fail(_problem(error, f"cannot write to {printable(args.output)}"))
+        _print("".join(f"{show(args.output, key)}\n" for key in keys))
     elif args.format == "json":
         _print(render_json(report))
     elif args.format == "md":

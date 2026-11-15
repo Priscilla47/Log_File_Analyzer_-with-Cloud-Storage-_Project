@@ -8,7 +8,7 @@ import pytest
 
 from loginsight import cli
 from loginsight.cli import EXIT_OK, EXIT_PROBLEM, main
-from loginsight.storage import MissingKeyError
+from loginsight.storage import MissingKeyError, locations
 
 GOOD = '203.0.113.5 - - [10/Oct/2026:10:00:01 +0000] "GET /index.html HTTP/1.1" 200 1500 "-" "x"\n'
 ATTACK = (
@@ -26,7 +26,7 @@ def virtual(monkeypatch, memory_storage_class, tmp_path):
         key = str(root)
         return roots.setdefault(key, memory_storage_class())
 
-    monkeypatch.setattr(cli, "LocalStorage", factory)
+    monkeypatch.setattr(locations, "LocalStorage", factory)
     monkeypatch.chdir(tmp_path)
     return roots
 
@@ -78,7 +78,7 @@ def test_a_storage_error_without_a_message_shows_its_class(virtual, monkeypatch,
     def broken(path):
         raise MissingKeyError("odd")
 
-    monkeypatch.setattr(cli, "_read_file", broken)
+    monkeypatch.setattr(cli, "read_text", broken)
     err = run(capsys, "analyze", "x.log")[2]
     assert err == "loginsight: error: cannot read x.log: MissingKeyError\n"
 

@@ -435,7 +435,6 @@ class TestSkippedLineWarning:
         _, out, err = run(capsys, "detect", log(self.lines(1, 1)), "--output", tmp_path)
         assert "loginsight: warning" in err and "loginsight: warning" not in out
 
-
     def test_parse_statistics_are_always_shown(self, capsys, log):
         out = run(capsys, "detect", log(self.lines(3, 1)))[1]
         assert "Lines: 4 read, 3 parsed, 1 skipped (75.0% parsed)" in out
@@ -592,4 +591,4 @@ class TestPackaging:
         assert not re.search(r"(?<![.\w])open\(", source)  # os.open(devnull) is not a file read
         assert "parse_file" not in source
         assert "Temporary exception" not in source
-        assert "LocalStorage" in source
+        assert "storage_for_folder" in source and "LocalStorage" not in source

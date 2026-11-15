@@ -166,3 +166,35 @@ class TestStructure:
 
     def test_nothing_is_called_planned_that_exists(self):
         assert "planned design" not in self.text
+
+
+class TestCloudStorageGuide:
+    GUIDE = DOCS / "CLOUD_STORAGE.md"
+
+    def test_every_command_in_it_is_valid_usage(self):
+        from loginsight.cli import build_parser
+
+        text = self.GUIDE.read_text(encoding="utf-8")
+        commands = re.findall(r"^loginsight (.+)$", text, re.MULTILINE)
+        assert len(commands) >= 3 and any("s3://" in command for command in commands)
+        for command in commands:
+            build_parser().parse_args(shlex.split(command))  # a mistake exits with status 2
+
+    def test_the_install_command_names_an_extra_that_exists(self):
+        import tomllib
+
+        extras = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"][
+            "optional-dependencies"
+        ]
+        assert "s3" in extras and extras["s3"][0].startswith("boto3")
+        assert '".[s3]"' in self.GUIDE.read_text(encoding="utf-8")
+        from loginsight.storage import s3
+
+        assert "loginsight[s3]" in s3.INSTALL_HINT
+
+    def test_the_readme_links_to_it(self):
+        assert "docs/CLOUD_STORAGE.md" in (ROOT / "README.md").read_text(encoding="utf-8")
+
+    def test_it_holds_no_secret_looking_value(self):
+        text = self.GUIDE.read_text(encoding="utf-8")
+        assert not re.search(r"AKIA[0-9A-Z]{16}|aws_secret_access_key\s*=", text, re.IGNORECASE)
