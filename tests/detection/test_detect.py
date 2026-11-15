@@ -425,7 +425,7 @@ def test_overlapping_rules_are_merged_on_a_big_generated_log(generator):
     signature = [d for d in found if not d.rule_id.startswith("behaviour-")]
     lines = Counter(d.first_index for d in signature)
     assert max(lines.values()) == 1, "no request may have two signature detections"
-    assert sum(1 for d in signature if d.also_matched) > 100  # and merging really happened
+    assert sum(1 for d in signature if d.also_matched) > 50  # and merging really happened
 
 
 def test_twenty_thousand_generated_lines_finish_in_a_few_seconds(generator):

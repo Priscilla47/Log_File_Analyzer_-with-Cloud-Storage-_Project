@@ -393,8 +393,8 @@ def test_removing_one_rule_is_noticed(benchmark_logs):
     assert "xss" in below_floor(scores)
 
 
-# The generator's attacks only exercise some rules. Removing one of these lowers its class's
-# recall, so the benchmark protects it. Listed by hand from measurements.
+# The generator has a payload for every rule. Removing one of these lowers its class's recall,
+# so the benchmark protects it. Listed by hand from measurements.
 EXERCISED = {
     "sqli-union-select": "sql_injection",
     "sqli-tautology": "sql_injection",
@@ -410,6 +410,19 @@ EXERCISED = {
     "probe-vcs-dir": "sensitive_file_probe",
     "probe-backup-archive": "sensitive_file_probe",
     "probe-diagnostics": "sensitive_file_probe",
+    "sqli-information-schema": "sql_injection",
+    "xss-event-handler-after-quote": "xss",
+    "xss-embedding-tag": "xss",
+    "traversal-dotdot": "path_traversal",
+    "traversal-sensitive-file": "path_traversal",
+    "traversal-file-wrapper": "path_traversal",
+    "traversal-overlong-utf8": "path_traversal",
+    "cmdi-shell-path": "command_injection",
+    "cmdi-reverse-shell": "command_injection",
+    "cmdi-jndi-lookup": "command_injection",
+    "probe-admin-panel": "sensitive_file_probe",
+    "probe-phpunit-eval": "sensitive_file_probe",
+    "probe-router-exploit": "sensitive_file_probe",
     "ssrf-cloud-metadata": "ssrf",
     "ssti-arithmetic-probe": "template_injection",
     "ssti-engine-internals": "template_injection",
@@ -423,19 +436,15 @@ def test_removing_a_rule_the_benchmark_exercises_lowers_its_recall(benchmark_log
     assert scores[label].recall < 1.0, f"{rule_id} is not exercised by the benchmark any more"
 
 
-def test_the_other_rules_are_not_exercised_by_the_benchmark_and_rely_on_their_own_cases(
-    benchmark_logs,
-):
-    """Every generator payload is caught by another rule too (path traversal), or by one
-    particular rule (command injection), or is not generated at all. Removing these changes no
-    score, which is the benchmark's honest limit: their protection is rule_cases.toml. If the
-    generator ever exercises one, this test fails and the rule moves to EXERCISED."""
-    others = [r.id for r in RULES.signatures if r.id not in EXERCISED]
-    assert len(others) == 13
-    for rule_id in others:
-        label = next(r.label for r in RULES.signatures if r.id == rule_id)
-        scores = pooled(benchmark_logs, without(RULES, rule_id))
-        assert scores[label].recall == 1.0, f"{rule_id} is now exercised: add it to EXERCISED"
+def test_every_signature_rule_is_exercised_by_the_benchmark():
+    """The generator has a payload for every rule, so removing any one lowers its class's
+    recall (the parametrised test above). A rule added without a payload fails here: add a
+    payload to ``scripts/generate_logs.py`` (and regenerate the samples), then list the rule in
+    ``EXERCISED``. Its own cases in ``rule_cases.toml`` are still required."""
+    ids = {rule.id for rule in RULES.signatures}
+    assert set(EXERCISED) == ids, sorted(ids ^ set(EXERCISED))
+    labels = {rule.id: rule.label for rule in RULES.signatures}
+    assert all(labels[rule_id] == label for rule_id, label in EXERCISED.items())
 
 
 @pytest.mark.parametrize(

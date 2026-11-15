@@ -30,7 +30,7 @@ def test_the_nginx_sample_gives_the_same_detections_as_the_apache_one(capsys):
     nginx = detections(capsys, SAMPLES / "demo_nginx.log")
     assert nginx["summary"] == apache["summary"]
     assert nginx["source"]["parse"] == apache["source"]["parse"]
-    assert len(nginx["detections"]) == len(apache["detections"]) == 34
+    assert len(nginx["detections"]) == len(apache["detections"]) == 35
     keys = ("label", "severity", "rule_id", "ip", "time", "count")
     assert [[d[k] for k in keys] for d in nginx["detections"]] == [
         [d[k] for k in keys] for d in apache["detections"]

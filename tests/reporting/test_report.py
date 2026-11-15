@@ -412,7 +412,7 @@ class TestDemoLog:
         result, detections, report = demo
         data = json.loads(render_json(report))
         assert data["summary"]["total_requests"] == summarize(result.entries).total_requests == 500
-        assert len(data["detections"]) == len(detections) == 34
+        assert len(data["detections"]) == len(detections) == 35
         assert data["source"]["parse"]["parsed"] == 500
         assert sum(b["requests"] for b in data["traffic"]["buckets"]) == 500
 
