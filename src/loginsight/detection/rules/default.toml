@@ -8,7 +8,8 @@
 #
 # Fields of a [[signature]] rule (all are required):
 #   id           lower-case letters, digits and single hyphens, unique in this file
-#   label        sql_injection, xss, path_traversal, command_injection or sensitive_file_probe
+#   label        sql_injection, xss, path_traversal, command_injection, sensitive_file_probe,
+#                ssrf, template_injection or file_inclusion
 #   severity     low, medium, high or critical
 #   description  one line saying what the rule catches
 #   pattern      the regular expression (at most 500 characters)
@@ -230,6 +231,44 @@ label = "sensitive_file_probe"
 severity = "medium"
 description = "Pages of home-router firmware (Boa, GPON, D-Link HNAP) that mass-scanners try to exploit"
 pattern = '''^[^?]*/(?:boaform/admin/formlogin|gponform/diag_form|hnap1)(?:[/;?]|$)'''
+
+# ---------------------------------------------------------------------------------------------
+# Server-side request forgery, template injection, remote file inclusion
+#
+# These look like ordinary parameters (a redirect, a template placeholder, a page to include),
+# so each rule asks for something an ordinary request never holds: a cloud metadata address, a
+# template tag with arithmetic or Python internals in it, a script on a bare IP address.
+# Known gap: after decoding, "+" and a space look the same (see the normalisation notes above),
+# so {{7+7}} is not told from {{7 7}} and is not caught; * and / are.
+# ---------------------------------------------------------------------------------------------
+
+[[signature]]
+id = "ssrf-cloud-metadata"
+label = "ssrf"
+severity = "high"
+description = "A cloud instance-metadata address (169.254.169.254, metadata.google.internal, 100.100.100.200, fd00:ec2::254) in a request, used to make the server fetch its own credentials"
+pattern = '''(?<!\d)(?<!\d\.)169\.254\.(?:169\.254|170\.2)(?!\d|\.\d)|\bmetadata\.google\.internal\b|\bmetadata\.azure\.com\b|(?<!\d)(?<!\d\.)100\.100\.100\.200(?!\d|\.\d)|\bfd00:ec2::254\b'''
+
+[[signature]]
+id = "ssti-arithmetic-probe"
+label = "template_injection"
+severity = "medium"
+description = "Arithmetic inside template tags ({{7*7}}, ${7*7}, #{7*7}, <%= 7*7 %>), the usual first probe for template injection"
+pattern = '''(?:\{\{|\$\{|#\{|<%=?|\{%\s*print)\s*\(?\s*['"]?\d+['"]?\s*\)?\s*[*/+-]\s*\(?\s*['"]?\d+['"]?\s*\)?\s*(?:\}\}|\}|%>|%\})'''
+
+[[signature]]
+id = "ssti-engine-internals"
+label = "template_injection"
+severity = "high"
+description = "Python or Java internals inside template tags ({{''.__class__.__mro__}}, {{config}} with __globals__, ${T(java.lang.Runtime)}), used to run code through a template engine"
+pattern = '''(?:\{\{|\{%|\$\{|#\{)[^}]{0,120}?(?:__(?:class|mro|subclasses|globals|builtins|import|init|base)__|\bt\s*\(\s*java\.|\bnew\s+java\.|@java\.|\bgetruntime\b|\bcycler\.__|\blipsum\.__)'''
+
+[[signature]]
+id = "rfi-script-on-address"
+label = "file_inclusion"
+severity = "high"
+description = "A parameter that holds a script (.php, .txt, .sh, .pl, .py, .jsp, .asp) on a bare IP address, the shape of a remote file inclusion"
+pattern = '''(?:[?&=]|\b(?:include|require|page|file|path|url|src|load)\s*=)\s*(?:https?|ftp)://(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?/[^\s&]*\.(?:php\d?|phtml|txt|sh|pl|py|jsp|aspx?|inc|cgi)(?![a-z0-9])'''
 
 # ---------------------------------------------------------------------------------------------
 # Behavioural rules look across requests from one address instead of at a single request.

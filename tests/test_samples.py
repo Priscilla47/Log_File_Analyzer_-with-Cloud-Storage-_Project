@@ -46,6 +46,9 @@ MARKERS = {
     "path_traversal": ("..", "%2e%2e"),
     "command_injection": (";", "|", "$(", "&&", "%60"),
     "sensitive_file_probe": (".env", ".git", "wp-config", "backup", ".aws", "phpinfo", "id_rsa"),
+    "ssrf": ("169.254.", "metadata.google", "100.100.100.200"),
+    "template_injection": ("{{", "${", "%7b%7b"),
+    "file_inclusion": ("http://", "https://", "ftp://", "http%3a"),
 }
 
 
@@ -128,7 +131,7 @@ def test_the_nginx_sample_differs_from_the_apache_one_only_where_a_quote_is_esca
     nginx = (SAMPLES / "demo_nginx.log").read_text().splitlines()
     assert len(apache) == len(nginx) == 500
     different = [n for n, (a, b) in enumerate(zip(apache, nginx, strict=True), 1) if a != b]
-    assert different == [141, 220]
+    assert different == [226, 333]
     for number in different:
         assert apache[number - 1].replace('\\"', "\\x22") == nginx[number - 1]
 
@@ -178,7 +181,7 @@ def test_labelled_lines_look_like_their_class(labels):
             target = entry.target.lower()
             assert any(marker in target for marker in MARKERS[item["label"]]), entry.target
             checked += 1
-    assert checked >= 20
+    assert checked >= 25
 
 
 def test_brute_force_lines_are_failed_logins_from_one_address(labels):

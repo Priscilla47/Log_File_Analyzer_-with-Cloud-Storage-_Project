@@ -131,8 +131,8 @@ def test_a_severity_prints_as_its_lower_case_name(severity, text):
 # --- labels ---------------------------------------------------------------------------
 
 
-def test_there_are_seven_labels_split_into_signature_and_behavioural():
-    assert len(LABELS) == 7 == len(set(LABELS))
+def test_there_are_ten_labels_split_into_signature_and_behavioural():
+    assert len(LABELS) == 10 == len(set(LABELS))
     assert set(SIGNATURE_LABELS) | set(BEHAVIOURAL_LABELS) == set(LABELS)
     assert not set(SIGNATURE_LABELS) & set(BEHAVIOURAL_LABELS)
     assert set(BEHAVIOURAL_LABELS) == {"brute_force", "scanner"}
