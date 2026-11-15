@@ -109,7 +109,14 @@ class FakeStreamlit:
 
     def slider(self, label, **kwargs):
         self.calls.append(
-            ("slider", label, kwargs["min_value"], kwargs["max_value"], kwargs["step"])
+            (
+                "slider",
+                label,
+                kwargs["min_value"],
+                kwargs["max_value"],
+                kwargs["step"],
+                kwargs["key"],
+            )
         )
         return self.choices.get("time", kwargs["value"])
 

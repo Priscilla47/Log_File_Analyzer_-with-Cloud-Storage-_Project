@@ -73,11 +73,12 @@ def _detections(st: Any, report: Report, scope: str) -> None:
         key=f"filter_class:{scope}",
         placeholder="All classes",
     )
+    addresses = list(ip_counts)[: filters.MAX_ADDRESS_CHOICES]
     ip = right.selectbox(
         "Address",
-        list(ip_counts),
+        addresses,
         index=None,
-        format_func=lambda address: f"{address} ({ip_counts[address]})",
+        format_func=lambda address: f"{filters.short(address)} ({ip_counts[address]})",
         key=f"filter_ip:{scope}",
         placeholder="All addresses",
     )
@@ -102,6 +103,11 @@ def _detections(st: Any, report: Report, scope: str) -> None:
         start=start,
         end=end,
     )
+    if len(ip_counts) > len(addresses):
+        st.caption(
+            f"The address list holds the {len(addresses)} addresses with the most detections "
+            f"of {len(ip_counts)}."
+        )
     st.caption(f"Showing {len(shown)} of {len(everything)} detections.")
     if not shown:
         st.info("No detection matches these filters.")
@@ -116,6 +122,7 @@ def _address(st: Any, report: Report, entries: list[LogEntry], scope: str) -> No
         "Address",
         data.ip_choices(report),
         index=None,
+        format_func=filters.short,
         key=f"address:{scope}",
         placeholder="Choose an address",
         help=f"Addresses with detections first, then the busiest, at most {data.MAX_IP_CHOICES}.",

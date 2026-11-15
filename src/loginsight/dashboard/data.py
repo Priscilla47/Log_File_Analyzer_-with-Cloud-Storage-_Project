@@ -6,8 +6,9 @@ without a browser. It never imports Streamlit. The numbers come from the same
 """
 
 from dataclasses import dataclass, field
+from datetime import timezone
 
-from loginsight.dashboard.filters import ip_counts
+from loginsight.dashboard.filters import MAX_ADDRESS_CHOICES, canonical_address, cell, ip_counts
 from loginsight.dashboard.profile import IpProfile
 from loginsight.parsing.models import LogEntry
 from loginsight.reporting.report import Report, human_bytes
@@ -28,9 +29,9 @@ UPLOAD_LIMIT_BYTES = UPLOAD_LIMIT_MB * 1024 * 1024
 BUCKETS = ("minute", "hour", "day")
 DEFAULT_BUCKET = "hour"
 
-# At most this many addresses are offered for the per-address view, so a log with tens of
-# thousands of addresses cannot make the list unusable.
-MAX_IP_CHOICES = 200
+# At most this many addresses are offered for the per-address view (the same number as in the
+# detections filter), so a log with tens of thousands of addresses cannot make the list unusable.
+MAX_IP_CHOICES = MAX_ADDRESS_CHOICES
 
 # A path longer than this is shortened in the chart so the bars stay readable.
 MAX_PATH_LABEL = 60
@@ -232,10 +233,11 @@ def ip_choices(report: Report, *, limit: int = MAX_IP_CHOICES) -> list[str]:
     """The addresses offered for a closer look, at most ``limit`` of them.
 
     First those with detections (the most detections first), then the busiest addresses of the
-    report, without repeats.
+    report, without repeats. An address is listed once however it is spelled in the log, in its
+    canonical form (see :func:`~loginsight.dashboard.filters.canonical_address`).
     """
     chosen = dict.fromkeys(ip_counts(report.detections))
-    chosen.update(dict.fromkeys(ip for ip, _ in report.summary.top_ips))
+    chosen.update(dict.fromkeys(canonical_address(ip) for ip, _ in report.summary.top_ips))
     return list(chosen)[:limit]
 
 
@@ -256,7 +258,12 @@ def profile_cards(profile: IpProfile) -> list[Card]:
     """The headline numbers of one address, in the order the page shows them."""
 
     def moment(value) -> str:
-        return value.strftime("%Y-%m-%d %H:%M:%S UTC") if value else "-"
+        """A time in UTC (the log's own offset is converted; no offset means UTC)."""
+        if not value:
+            return "-"
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.strftime("%Y-%m-%d %H:%M:%S UTC")
 
     return [
         Card(label="Requests", value=str(profile.requests), help="Requests this address sent."),
@@ -277,8 +284,11 @@ def profile_status_table(profile: IpProfile) -> dict[str, list]:
 
 
 def profile_paths_table(profile: IpProfile) -> dict[str, list]:
-    """The paths this address asked for, busiest first, then one row for all the others."""
-    paths = [_label(path) for path, _ in profile.top_paths]
+    """The paths this address asked for, busiest first, then one row for all the others.
+
+    A path a spreadsheet would read as a formula is quoted (see ``filters.cell``).
+    """
+    paths = [cell(_label(path)) for path, _ in profile.top_paths]
     counts = [count for _, count in profile.top_paths]
     if profile.other_requests:
         others = profile.distinct_paths - len(profile.top_paths)

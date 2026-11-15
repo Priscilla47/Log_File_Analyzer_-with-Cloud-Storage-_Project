@@ -169,3 +169,27 @@ class TestTheNumbersAddUp:
         entries, detections = parsed
         ip, count = summarize(entries).top_ips[0]
         assert ip_profile(entries, detections, ip).requests == count
+
+
+class TestItIsFastAndMatchesAddressesAsAddresses:
+    def test_a_big_log_of_many_addresses_is_scanned_in_well_under_a_second_of_cpu(self):
+        import time
+
+        from loginsight.dashboard import filters
+
+        filters.canonical_address.cache_clear()
+        many = [
+            entry(ip=f"198.51.{n % 250}.{n % 199 + 1}", path=f"/p{n % 7}") for n in range(60_000)
+        ]
+        many += [entry(ip="203.0.113.5") for _ in range(3)]
+        started = time.process_time()
+        for _ in range(3):  # three reruns of the page, as three clicks
+            profile = ip_profile(many, [], "203.0.113.5")
+        assert profile.requests == 3
+        assert time.process_time() - started < 3.0
+
+    def test_other_spellings_of_the_address_in_the_log_are_found(self):
+        spelled = [entry(ip="2001:DB8::1"), entry(ip="2001:db8::1"), entry(ip="2001:0db8::1")]
+        assert ip_profile(spelled, [found("2001:DB8:0::1")], "2001:db8::1").requests == 3
+        assert len(ip_profile(spelled, [found("2001:DB8:0::1")], "2001:db8::1").detections) == 1
+        assert ip_profile(spelled, [], "2001:db8::1").requests == 3
