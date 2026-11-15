@@ -5,6 +5,7 @@
   },
   "source": {
     "name": "tiny.log",
+    "format": "apache",
     "parse": {
       "total_lines": 5,
       "parsed": 4,

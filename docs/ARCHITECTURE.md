@@ -1,6 +1,6 @@
 # Architecture
 
-This describes LogInsight as it is built today. The one part that does not exist yet, the dashboard, is marked **planned**. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
+This describes LogInsight as it is built today. The dashboard is still being built: its section below says what exists and stays marked **planned** until it is complete. For how to run the tool see [USAGE.md](USAGE.md); for how the folders are organised see [STRUCTURE.md](STRUCTURE.md).
 
 ## Overview
 
@@ -12,7 +12,7 @@ Data flows in one direction, from a raw log file to a report:
                                         └──► detection ──► detections ──┘
 ```
 
-The command line drives this pipeline and contains no analysis logic of its own. The dashboard (**planned**) will drive the same pipeline. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
+The command line drives this pipeline and contains no analysis logic of its own. The dashboard drives the same pipeline through `workflow.py`. All file access goes through the storage layer: the command line reads the log and writes the report files through `LocalStorage`, and nothing else opens a file.
 
 ## Components
 
@@ -26,7 +26,7 @@ All modules are in `src/loginsight/`.
 ### Analysis (`analysis/`)
 Pure functions that take log entries and return statistics. They do no file or network access, which makes them easy to test with small, known inputs.
 - `summary.py`: `summarize` gives totals, unique IPs, top IPs and paths, status classes and codes, methods, bytes and the error rate.
-- `timeseries.py`: `requests_per_bucket` (requests and errors per minute or hour, gaps included) and `busiest_window`.
+- `timeseries.py`: `requests_per_bucket` (requests and errors per minute, hour or day, gaps included unless the range is too wide) and `busiest_window`.
 
 ### Detection (`detection/`)
 Classifies suspicious activity with explainable rules. There are two kinds:
@@ -68,11 +68,14 @@ That number comes from synthetic logs made by a simple generator. It shows that 
 - `charts.py`: the three PNG charts (status classes, traffic, top paths), drawn with matplotlib's object API so there is no global state.
 - `text.py`: the plain-text views the command line prints. Control characters from the log are shown as visible escapes so a log line cannot send commands to a terminal.
 
-The JSON layout is `tool`, `source` (name and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
+The JSON layout is `tool`, `source` (name, log format and parse statistics), `summary`, `traffic` (bucket size and buckets) and `detections`, in that order.
+
+### One analysis for every interface (`workflow.py`)
+`analyze_text(text, source_name, ...)` does the whole job from the text of a log to a `Report`: it detects the format, parses, refuses a log where no line can be read (`NothingReadError`), collects the "many lines skipped" warning, applies the rules and builds the report. The command line and the dashboard both call it, so they cannot disagree about a number.
 
 ### Interfaces
 - **CLI (`cli.py`, `__main__.py`):** `loginsight analyze` and `loginsight detect`, with a choice of output format. Exit code 0 is success, 1 a problem with a file, 2 wrong usage.
-- **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail.
+- **Dashboard (`dashboard/`), planned:** a web interface to explore the same results interactively, with filters and per-IP detail. Started: `loginsight dashboard` serves a page where you choose a log and see the headline numbers and three charts: responses by status class, traffic over time (grouped by minute, hour or day) and the most requested paths, then the detections in a table that can be narrowed by severity, class, address and time range (each value shows how many detections it has), then a closer look at one chosen address: its requests, first and last time, the responses it got, the paths it asked for and its detections. The tables behind the charts are plain columns built in `data.py` from the report, so they equal its numbers. `app.py` is the only file that imports Streamlit and just hands it to `render.py`, which holds the logic of the page and is tested with a fake Streamlit; `data.py` turns an uploaded file into the numbers and messages (through `workflow.py`, so they equal the command line's); `filters.py` holds the pure functions behind the detections table (`filter_detections`, the counts, the table of escaped text, so evidence from a log is never shown as markup, and a cell a spreadsheet would read as a formula gets a quote in front because the table can be downloaded as CSV). An address is the same address in any spelling (`same_address`, remembered per address so a scan of a big log stays fast), but an IPv4 address written as IPv6 is not folded into the plain one. The address list shows at most 200 addresses and `profile.py` the pure `ip_profile` behind the address view, whose numbers add up to the report's (the status classes to the requests, the listed paths and the rest to the requests, and over all addresses to the total). `launch.py` builds the command that serves it (this computer only, no usage statistics) and checks Streamlit is installed. Streamlit is an optional extra, so the rest of the tool works without it.
 
 ### Storage (`storage/`)
 A small interface for reading and writing named data.
