@@ -14,10 +14,13 @@ from collections.abc import Sequence
 
 from loginsight import __version__
 from loginsight.dashboard.launch import (
+    DEFAULT_ADDRESS,
     DEFAULT_PORT,
     MAX_PORT,
     MIN_PORT,
+    check_address,
     dashboard_url,
+    is_loopback,
     port_is_free,
     streamlit_available,
     streamlit_command,
@@ -67,6 +70,13 @@ def _port(text: str) -> int:
             f"port must be between {MIN_PORT} and {MAX_PORT}, got {number}"
         )
     return number
+
+
+def _address(text: str) -> str:
+    try:
+        return check_address(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -133,6 +143,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PORT,
         metavar="N",
         help=f"port to serve the dashboard on (default: {DEFAULT_PORT})",
+    )
+    dashboard.add_argument(
+        "--address",
+        type=_address,
+        default=DEFAULT_ADDRESS,
+        metavar="IP",
+        help=(
+            f"IP address to listen on (default: {DEFAULT_ADDRESS}, this computer only). "
+            "Only change it inside a container, and publish the port to 127.0.0.1"
+        ),
     )
     return parser
 
@@ -209,10 +229,16 @@ def _dashboard(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return EXIT_USAGE
-    if not port_is_free(args.port):
+    if not port_is_free(args.port, args.address):
         return _fail(f"port {args.port} is already in use; choose another with --port")
+    if not is_loopback(args.address):
+        _warn(
+            f"the dashboard is offered on {args.address}: anyone who can reach it can upload "
+            "logs and see the result. Use this inside a container, and publish the port to "
+            "127.0.0.1 only"
+        )
     try:
-        process = subprocess.Popen(streamlit_command(args.port))
+        process = subprocess.Popen(streamlit_command(args.port, args.address))
     except OSError as error:
         reason = error.strerror or type(error).__name__
         return _fail(f"cannot start Streamlit: {reason}")

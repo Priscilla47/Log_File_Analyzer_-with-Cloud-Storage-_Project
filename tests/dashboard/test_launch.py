@@ -176,7 +176,7 @@ class Started(list):
 def streamlit(monkeypatch):
     """Pretend Streamlit is installed and replace the process that would run it."""
     monkeypatch.setattr(cli, "streamlit_available", lambda: True)
-    monkeypatch.setattr(cli, "port_is_free", lambda port: True)
+    monkeypatch.setattr(cli, "port_is_free", lambda port, address: True)
     made = Started()
 
     def popen(command, **kwargs):
@@ -327,7 +327,7 @@ class TestCommandLine:
     def test_a_port_that_is_in_use_is_reported_before_anything_starts(
         self, run, streamlit, monkeypatch
     ):
-        monkeypatch.setattr(cli, "port_is_free", lambda port: False)
+        monkeypatch.setattr(cli, "port_is_free", lambda port, address: False)
         status, out, err = run("dashboard", "--port", 8123)
         assert status == 1 and out == ""
         assert err == "loginsight: error: port 8123 is already in use; choose another with --port\n"
@@ -335,7 +335,7 @@ class TestCommandLine:
 
     def test_the_port_is_checked_with_the_one_asked_for(self, run, streamlit, monkeypatch):
         asked = []
-        monkeypatch.setattr(cli, "port_is_free", lambda port: asked.append(port) or True)
+        monkeypatch.setattr(cli, "port_is_free", lambda port, address: asked.append(port) or True)
         run("dashboard", "--port", 9001)
         assert asked == [9001]
 
@@ -381,3 +381,110 @@ class TestCommandLine:
     def test_the_dashboard_command_takes_no_log_file(self, run):
         status, _, err = run("dashboard", "some.log")
         assert status == EXIT_USAGE and "unrecognized arguments" in err
+
+
+class TestTheListeningAddress:
+    """The dashboard listens on this computer only, unless the person says otherwise."""
+
+    def test_the_default_is_this_computer(self):
+        assert launch.DEFAULT_ADDRESS == "127.0.0.1" and launch.is_loopback("127.0.0.1")
+        command = launch.streamlit_command(8501)
+        assert command == launch.streamlit_command(8501, "127.0.0.1")
+
+    @pytest.mark.parametrize("address", ["0.0.0.0", "192.0.2.7", "::", "::1", "2001:db8::5"])
+    def test_an_ip_address_is_passed_to_streamlit_as_given(self, address):
+        command = launch.streamlit_command(8501, address)
+        assert command[command.index("--server.address") + 1] == address
+
+    @pytest.mark.parametrize(
+        "bad",
+        ["", "localhost", "example.com", "1.2.3", "256.1.1.1", "0.0.0.0/0", "1.1.1.1 --x y", "-1"],
+    )
+    def test_anything_that_is_not_an_address_is_refused(self, bad):
+        with pytest.raises(ValueError, match="not an IPv4 or IPv6 address"):
+            launch.streamlit_command(8501, bad)
+        with pytest.raises(ValueError):
+            launch.check_address(bad)
+        with pytest.raises(ValueError):
+            launch.is_loopback(bad)
+        with pytest.raises(ValueError):
+            launch.port_is_free(8501, bad)
+
+    @pytest.mark.parametrize(
+        ("address", "loopback"),
+        [("127.0.0.1", True), ("127.0.0.5", True), ("::1", True), ("0.0.0.0", False),
+         ("192.0.2.7", False), ("::", False)],
+    )  # fmt: skip
+    def test_loopback_addresses_are_told_from_the_rest(self, address, loopback):
+        assert launch.is_loopback(address) is loopback
+
+    def test_a_port_is_probed_on_the_address_asked_for(self):
+        import socket
+
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            sock.listen()
+            busy = sock.getsockname()[1]
+        assert launch.port_is_free(busy, "127.0.0.1")
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            sock.listen()
+            assert not launch.port_is_free(sock.getsockname()[1], "127.0.0.1")
+
+    def test_an_ipv6_address_is_probed_with_an_ipv6_socket(self):
+        import socket
+
+        try:
+            with socket.socket(socket.AF_INET6) as sock:
+                sock.bind(("::1", 0))
+                sock.listen()
+                busy = sock.getsockname()[1]
+                assert not launch.port_is_free(busy, "::1")
+        except OSError:
+            pytest.skip("no IPv6 on this computer")
+        assert launch.port_is_free(busy, "::1")
+
+
+class TestTheAddressOption:
+    @pytest.fixture
+    def run(self, capsys):
+        def go(*argv):
+            status = main([str(a) for a in argv])
+            out, err = capsys.readouterr()
+            return status, out, err
+
+        return go
+
+    def test_the_default_starts_it_on_this_computer_without_a_warning(self, run, streamlit):
+        status, out, err = run("dashboard")
+        assert (status, err) == (EXIT_OK, "")
+        assert [p.command for p in streamlit] == [launch.streamlit_command(launch.DEFAULT_PORT)]
+
+    def test_an_address_reaches_streamlit_and_a_warning_is_shown(self, run, streamlit):
+        status, out, err = run("dashboard", "--address", "0.0.0.0", "--port", 9100)
+        assert status == EXIT_OK
+        assert [p.command for p in streamlit] == [launch.streamlit_command(9100, "0.0.0.0")]
+        assert err.startswith("loginsight: warning: the dashboard is offered on 0.0.0.0")
+        assert "publish the port to 127.0.0.1" in err
+        assert "http://127.0.0.1:9100" in out  # the address to open stays the local one
+
+    def test_a_loopback_address_gives_no_warning(self, run, streamlit):
+        assert run("dashboard", "--address", "127.0.0.2")[2] == ""
+
+    @pytest.mark.parametrize("bad", ["localhost", "", "0.0.0.0/0", "300.1.1.1"])
+    def test_a_bad_address_is_a_usage_error(self, run, bad):
+        status, out, err = run("dashboard", "--address", bad)
+        assert (status, out) == (EXIT_USAGE, "") and "not an IPv4 or IPv6 address" in err
+
+    def test_the_port_is_probed_on_that_address(self, run, streamlit, monkeypatch):
+        asked = []
+        monkeypatch.setattr(
+            cli, "port_is_free", lambda port, address: asked.append((port, address)) or True
+        )
+        run("dashboard", "--address", "0.0.0.0", "--port", 9101)
+        assert asked == [(9101, "0.0.0.0")]
+
+    def test_the_help_says_when_to_use_it(self, capsys):
+        assert main(["dashboard", "--help"]) == EXIT_OK
+        out = capsys.readouterr().out
+        assert "--address IP" in out and "inside a container" in out

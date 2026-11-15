@@ -78,6 +78,7 @@ class TestUsageCommands:
             "--min-severity",
             "--rules",
             "--port",
+            "--address",
             "--version",
         ):
             assert option in text, option

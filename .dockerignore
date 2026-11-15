@@ -1,0 +1,19 @@
+# Not part of the image: version control, local environments, private and third-party folders,
+# caches, and everything the package does not need to be built.
+# every hidden folder and file (version control, environments, editor and local tool folders)
+.*
+logub-master
+venv
+
+build
+dist
+*.egg-info
+__pycache__
+*.py[cod]
+htmlcov
+reports
+tests
+docs
+scripts
+*.pem
+*.key

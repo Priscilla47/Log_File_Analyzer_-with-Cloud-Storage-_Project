@@ -24,6 +24,8 @@ The dashboard is optional and needs Streamlit (Python 3.11 or newer installs the
 pip install -e ".[dashboard]"
 ```
 
+(Or skip all of this and use the container: [Running in a container](#running-in-a-container).)
+
 The repository comes with a small synthetic log, `data/samples/demo.log`, so you can try everything without a real server. All the commands on this page use it.
 
 ## The two commands
@@ -91,6 +93,39 @@ Last, **One address** lets you choose an address (those with detections first, t
 ![The detections table with its filters, and the view of one address](images/dashboard-detections.png)
 
 Reading a big log takes a moment; the page keeps the result, so changing a filter, an address or the traffic period afterwards is instant. Choosing another file reads that one instead. The screenshots show `data/samples/demo.log`, a synthetic log; what was looked at in a real browser, and what that found, is in [BROWSER_CHECK.md](BROWSER_CHECK.md).
+
+## Running in a container
+
+If you would rather not install Python packages, the repository has a `Dockerfile` for the command line and the dashboard (Docker, or any tool that builds from a Dockerfile, is needed). The image holds the tool with both optional extras (dashboard and S3), runs as a user without privileges, and has no secrets in it. It also holds the synthetic sample logs, in `/samples`.
+
+Build it once, from a clone of the repository:
+
+```
+docker build -t loginsight .
+```
+
+Analyse the demo log that is inside the image:
+
+```
+docker run --rm loginsight analyze /samples/demo.log
+```
+
+Analyse your own log: mount the folder that holds it on `/data` (add `:Z` to the mount on a system with SELinux). A report written with `--output` goes into the same folder:
+
+```
+docker run --rm -v "$PWD":/data loginsight analyze access.log
+docker run --rm -v "$PWD":/data loginsight detect access.log --format json --output reports
+```
+
+The files written into a mounted folder belong to the user inside the container (number 10001); add `--user "$(id -u)"` to write them as yourself.
+
+The dashboard needs to listen on all the addresses of the container, or the port you publish would not reach it. Publish the port to `127.0.0.1` of your machine, so that only you can open it:
+
+```
+docker run --rm -p 127.0.0.1:8501:8501 loginsight dashboard --address 0.0.0.0
+```
+
+Then open <http://127.0.0.1:8501>. `-p 8501:8501` without the `127.0.0.1:` would offer the dashboard, with the logs anyone uploads to it, to your whole network; the command warns about this whenever `--address` is not a local address. For a log in S3, pass the usual `AWS_*` environment variables (`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION`) and an `s3://` location; see [CLOUD_STORAGE.md](CLOUD_STORAGE.md).
 
 ## Output formats
 
