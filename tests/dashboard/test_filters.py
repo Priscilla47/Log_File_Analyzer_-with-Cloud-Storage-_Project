@@ -161,9 +161,60 @@ class TestHostileText:
         assert "<script>" in evidence  # kept as text: the table never renders it as HTML
         assert table["IP"] == ["1.2.3.4\\x1b"]
 
-    def test_filtering_by_hostile_evidence_text_is_not_a_thing(self):
-        # the evidence is not a filter at all: nothing in it can change what is kept
-        assert filter_detections([det(evidence=self.EVIL)], ip="1.2.3.4") == []
+    def test_hostile_text_in_an_address_is_matched_as_text_only(self):
+        evil = det("e", ip="1.2.3.4\x1b[31m=HYPERLINK(1)", evidence=self.EVIL)
+        assert filter_detections([evil, A], ip="1.2.3.4\x1b[31m=HYPERLINK(1)") == [evil]
+        assert filter_detections([evil, A], ip="1.2.3.4") == []  # a prefix is not the address
+
+    @pytest.mark.parametrize("start", ["=", "+", "-", "@"])
+    def test_a_cell_a_spreadsheet_would_read_as_a_formula_is_quoted(self, start):
+        table = detections_table([det(ip=start + "1+1|cmd", evidence=start + "SUM(1)")])
+        assert table["IP"] == ["'" + start + "1+1|cmd"]
+        assert table["Evidence"] == ["'" + start + "SUM(1)"]
+
+    def test_other_cells_are_left_alone(self):
+        table = detections_table([det(ip="203.0.113.5", evidence="GET /a=b+c-d@e")])
+        assert table["IP"] == ["203.0.113.5"] and table["Evidence"] == ["GET /a=b+c-d@e"]
+
+    def test_the_quote_does_not_hide_an_escape_that_follows(self):
+        assert filters.cell("=\x1b") == "'=\\x1b" and filters.cell("") == ""
+
+    def test_a_label_for_a_widget_is_escaped_and_cut(self):
+        assert filters.short("1.2.3.4\x1b") == "1.2.3.4\\x1b"
+        long = "x" * 100
+        assert filters.short(long) == "x" * 59 + "\u2026" and len(filters.short(long)) == 60
+        assert (
+            filters.short("y" * 60) == "y" * 60 and filters.short("y" * 61) == "y" * 59 + "\u2026"
+        )
+        assert filters.short("abcdef", limit=4) == "abc\u2026"
+
+
+class TestSameAddressIsFastAndExact:
+    def test_the_two_spellings_are_found_once_and_remembered(self):
+        filters.canonical_address.cache_clear()
+        for _ in range(1000):
+            assert same_address("2001:DB8::1", "2001:db8::1")
+        assert filters.canonical_address.cache_info().misses <= 2
+
+    def test_what_is_not_folded_is_documented_and_stays_different(self):
+        assert not same_address("::ffff:1.2.3.4", "1.2.3.4")
+        assert not same_address("fe80::1%eth0", "fe80::1")
+        assert not same_address(" 1.2.3.4", "1.2.3.4")
+        assert not same_address("010.0.0.1", "10.0.0.1")
+
+    def test_a_scan_of_many_entries_is_cheap(self):
+        import time
+
+        started = time.process_time()
+        hits = sum(
+            same_address(f"198.51.{n % 250}.{n % 200}", "203.0.113.5") for n in range(200_000)
+        )
+        assert hits == 0 and time.process_time() - started < 2.0
+
+    def test_text_that_is_not_an_address_is_remembered_as_itself(self):
+        assert filters.canonical_address("not-an-ip") == "not-an-ip"
+        assert filters.canonical_address("::1") == "::1"
+        assert filters.canonical_address("0:0:0:0:0:0:0:1") == "::1"
 
 
 class TestCounts:
@@ -185,6 +236,16 @@ class TestCounts:
     def test_label_counts_most_frequent_first_then_by_name_and_only_those_that_occur(self):
         assert list(label_counts(ALL).items()) == [("xss", 2), ("scanner", 1), ("sql_injection", 1)]
         assert label_counts([]) == {}
+
+    def test_spellings_of_one_address_are_counted_together_in_their_canonical_form(self):
+        rows = [
+            det("1", ip="2001:DB8::1"),
+            det("2", ip="2001:db8::1"),
+            det("3", ip="2001:0db8:0:0:0:0:0:1"),
+            det("4", ip="203.0.113.5"),
+        ]
+        assert list(ip_counts(rows).items()) == [("2001:db8::1", 3), ("203.0.113.5", 1)]
+        assert len(filter_detections(rows, ip="2001:db8::1")) == 3  # what the list then filters
 
     def test_ip_counts_most_frequent_first_then_by_address(self):
         assert list(ip_counts(ALL).items()) == [
