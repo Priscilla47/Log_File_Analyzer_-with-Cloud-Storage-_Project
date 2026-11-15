@@ -221,3 +221,71 @@ class TestWarningsAndErrors:
 
 def test_the_helpers_hold_no_streamlit():
     assert not hasattr(data, "st") and not hasattr(data, "streamlit")
+
+
+class TestReadingThenShowing:
+    """Reading an upload is separate from showing it for one traffic period."""
+
+    DEMO = (SAMPLES / "demo.log").read_bytes()
+
+    def test_show_of_a_reading_equals_analysing_in_one_step(self):
+        from loginsight.dashboard.data import read_upload, show
+
+        upload = read_upload(self.DEMO, "demo.log")
+        for bucket in ("minute", "hour", "day"):
+            assert show(upload, bucket) == analyze_upload(self.DEMO, "demo.log", bucket=bucket)
+
+    def test_each_period_is_built_once_and_remembered(self, monkeypatch):
+        from loginsight.dashboard import data
+
+        built = []
+        real = data.build
+        monkeypatch.setattr(
+            data, "build", lambda *a, **k: built.append(k["bucket"]) or real(*a, **k)
+        )
+        upload = data.read_upload(self.DEMO, "demo.log")
+        first = data.show(upload, "hour")
+        assert data.show(upload, "hour") is first
+        data.show(upload, "minute")
+        data.show(upload, "hour")
+        data.show(upload, "minute")
+        assert built == ["hour", "minute"]
+        assert data.show(upload).charts.bucket == "hour"  # the default is the one already built
+
+    def test_reading_builds_no_report(self, monkeypatch):
+        from loginsight.dashboard import data
+
+        monkeypatch.setattr(data, "build", lambda *a, **k: pytest.fail("a report was built"))
+        upload = data.read_upload(self.DEMO, "demo.log")
+        assert upload.reading is not None and upload.error is None and upload.shown == {}
+
+    def test_every_period_shares_the_same_requests(self):
+        from loginsight.dashboard.data import read_upload, show
+
+        upload = read_upload(self.DEMO, "demo.log")
+        assert show(upload, "minute").entries is show(upload, "day").entries
+
+    def test_a_wrong_period_raises_and_is_not_remembered(self):
+        from loginsight.dashboard.data import read_upload, show
+
+        upload = read_upload(self.DEMO, "demo.log")
+        with pytest.raises(ValueError):
+            show(upload, "week")
+        assert upload.shown == {}
+
+    def test_a_problem_with_the_file_is_kept_with_the_upload_and_shown_for_any_period(self):
+        from loginsight.dashboard.data import read_upload, show
+
+        for raw, text in ((b"x" * 20, "This file is"), (b"junk\n" * 3, "None of the 3 lines")):
+            upload = read_upload(raw, "a.log", limit=10 if len(raw) == 20 else 1000)
+            assert upload.reading is None and text in upload.error
+            for bucket in ("minute", "day"):
+                outcome = show(upload, bucket)
+                assert outcome.error == upload.error and outcome.report is None
+            assert upload.shown == {}
+
+    def test_an_empty_file_reads_and_shows_the_notice(self):
+        from loginsight.dashboard.data import read_upload, show
+
+        outcome = show(read_upload(b"", "a.log"))
+        assert outcome.notice == "The file has no requests in it." and outcome.charts is None

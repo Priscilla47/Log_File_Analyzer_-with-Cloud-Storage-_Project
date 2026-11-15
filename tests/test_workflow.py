@@ -103,3 +103,72 @@ class TestProblems:
     def test_a_bad_bucket_or_format_is_still_a_value_error(self):
         with pytest.raises(ValueError):
             analyze_text(GOOD, "a.log", bucket="week")
+
+
+class TestReadingThenBuilding:
+    """The slow part (reading) and the cheap part (a report for one period) are separate."""
+
+    def test_reading_then_building_equals_analysing_for_every_period(self):
+        from loginsight.workflow import build, read_text
+
+        text = (SAMPLES / "demo.log").read_text()
+        reading = read_text(text)
+        for bucket in ("minute", "hour", "day"):
+            expected = analyze_text(text, "demo.log", bucket=bucket)
+            assert build(reading, "demo.log", bucket=bucket) == expected.report
+            assert reading.warnings == expected.warnings
+            assert reading.entries == expected.entries
+
+    def test_building_does_not_change_the_reading(self):
+        from loginsight.workflow import build, read_text
+
+        reading = read_text(GOOD * 3 + SQLI)
+        before = (list(reading.detections), list(reading.entries), list(reading.warnings))
+        for bucket in ("minute", "day", "hour"):
+            build(reading, "a.log", bucket=bucket, top_n=1)
+        assert (reading.detections, reading.entries, reading.warnings) == before
+
+    def test_only_the_traffic_depends_on_the_period(self):
+        from loginsight.workflow import build, read_text
+
+        reading = read_text(GOOD * 2 + SQLI)
+        minute, day = (build(reading, "a.log", bucket=b) for b in ("minute", "day"))
+        assert minute.buckets != day.buckets and minute.bucket == "minute" and day.bucket == "day"
+        assert minute.summary == day.summary and minute.detections == day.detections
+
+    def test_the_detections_and_the_rules_are_applied_when_reading(self):
+        from loginsight.workflow import read_text
+
+        reading = read_text(GOOD + SQLI)
+        assert [d.label for d in reading.detections] == ["sql_injection"]
+        assert read_text(GOOD + SQLI, min_severity=Severity.CRITICAL).detections == []
+        assert reading.log_format == "apache"
+
+    def test_a_log_nothing_can_be_read_from_is_refused_when_reading(self):
+        from loginsight.workflow import read_text
+
+        with pytest.raises(NothingReadError):
+            read_text("junk\nmore junk\n")
+
+    def test_an_empty_text_reads_to_nothing(self):
+        from loginsight.workflow import build, read_text
+
+        reading = read_text("")
+        assert reading.entries == [] and reading.detections == [] and reading.warnings == []
+        assert build(reading, "a.log").summary.total_requests == 0
+
+    def test_a_wrong_period_or_count_is_refused_when_building(self):
+        from loginsight.workflow import build, read_text
+
+        reading = read_text(GOOD)
+        with pytest.raises(ValueError):
+            build(reading, "a.log", bucket="week")
+        with pytest.raises(ValueError):
+            build(reading, "a.log", top_n=-1)
+
+    def test_a_reading_cannot_be_changed_by_assigning(self):
+        from loginsight.workflow import read_text
+
+        reading = read_text(GOOD)
+        with pytest.raises(AttributeError):
+            reading.log_format = "nginx"  # type: ignore[misc]

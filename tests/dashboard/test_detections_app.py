@@ -170,15 +170,20 @@ def test_the_address_filter_narrows_the_list_in_the_real_page():
     assert list(app.dataframe[0].value["Rule"]) == [d.rule_id for d in expected]
 
 
-def test_changing_a_filter_does_not_read_the_log_again(monkeypatch):
+def count_reads(monkeypatch):
     calls = []
-    real = data.analyze_upload
+    real = data.read_upload
 
     def counting(*args, **kwargs):
         calls.append(1)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(data, "analyze_upload", counting)
+    monkeypatch.setattr(data, "read_upload", counting)
+    return calls
+
+
+def test_changing_a_filter_does_not_read_the_log_again(monkeypatch):
+    calls = count_reads(monkeypatch)
     app = upload("demo.log", DEMO)
     assert len(calls) == 1
     app.multiselect[0].select(Severity.HIGH).run()
@@ -187,17 +192,42 @@ def test_changing_a_filter_does_not_read_the_log_again(monkeypatch):
     assert len(calls) == 1
 
 
-def test_a_different_period_or_file_does_read_it_again(monkeypatch):
-    calls = []
-    real = data.analyze_upload
-
-    def counting(*args, **kwargs):
-        calls.append(1)
-        return real(*args, **kwargs)
-
-    monkeypatch.setattr(data, "analyze_upload", counting)
+def test_changing_the_traffic_period_does_not_read_the_log_again(monkeypatch):
+    calls = count_reads(monkeypatch)
     app = upload("demo.log", DEMO)
-    app.radio[0].set_value("minute").run()
-    assert len(calls) == 2
+    for period in ("minute", "day", "hour", "minute"):
+        app.radio[0].set_value(period).run()
+        assert not app.exception
+    assert len(calls) == 1
+
+
+def test_a_different_file_does_read_it_again(monkeypatch):
+    calls = count_reads(monkeypatch)
+    app = upload("demo.log", DEMO)
     app.file_uploader[0].upload("other.log", DEMO.replace(b"203.0.113", b"198.51.100")).run()
-    assert len(calls) == 3 and not app.exception
+    assert len(calls) == 2 and not app.exception
+
+
+def test_every_period_gives_the_same_numbers_detections_and_addresses():
+    def seen(period):
+        app = upload("demo.log", DEMO)
+        app.radio[0].set_value(period).run()
+        cards = {m.label: m.value for m in app.metric if m.label in data_labels}
+        return cards, list(app.dataframe[0].value["Rule"]), app.selectbox[-1].options
+
+    data_labels = {"Requests", "Unique IPs", "Error rate", "Data sent", "Skipped lines"}
+    assert seen("minute") == seen("hour") == seen("day")
+
+
+def test_the_period_changes_the_chart_after_the_first_reading():
+    app = upload("demo.log", DEMO)
+    points = {}
+    for period in ("minute", "hour", "day", "minute"):
+        app.radio[0].set_value(period).run()
+        chart = [
+            e.proto
+            for e in app.main
+            if type(e).__name__ == "UnknownElement" and hasattr(e.proto, "spec")
+        ][1]
+        points[period] = len(chart.datasets[0].data.data) if len(chart.datasets) else 0
+    assert points["minute"] != points["day"]

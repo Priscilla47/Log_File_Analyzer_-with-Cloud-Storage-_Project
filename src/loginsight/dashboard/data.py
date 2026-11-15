@@ -13,7 +13,7 @@ from loginsight.dashboard.profile import IpProfile
 from loginsight.parsing.models import LogEntry
 from loginsight.reporting.report import Report, human_bytes
 from loginsight.reporting.text import printable
-from loginsight.workflow import NothingReadError, analyze_text
+from loginsight.workflow import NothingReadError, Reading, build, read_text
 
 APP_TITLE = "LogInsight"
 EMPTY_MESSAGE = (
@@ -173,20 +173,30 @@ def _facts(report: Report) -> list[str]:
     ]
 
 
-def analyze_upload(
-    raw: bytes, name: str, *, limit: int = UPLOAD_LIMIT_BYTES, bucket: str = DEFAULT_BUCKET
-) -> Outcome:
-    """Analyse the bytes of an uploaded log and describe what the page should show.
+@dataclass(slots=True)
+class Upload:
+    """An uploaded file after it was read, before it is shown for one traffic period.
 
-    The bytes are read like the command line reads a file: UTF-8, a leading byte order mark
-    dropped, invalid bytes replaced. A file over ``limit`` bytes, or one where no line can be
-    read as a log entry, gives an ``error`` with a readable message and no numbers; an empty
-    file is not an error. ``bucket`` is the period the traffic chart groups by (one of
-    :data:`BUCKETS`, otherwise :class:`ValueError`). Nothing else here raises for a problem with
-    the file.
+    Reading is the slow part, so the page keeps this and only asks :func:`show` for the period
+    chosen. Exactly one of ``reading`` and ``error`` is set. ``shown`` remembers what was built
+    for each period (a period is built once); apart from that, treat it as read-only.
+    """
+
+    name: str
+    reading: Reading | None = None
+    error: str | None = None
+    shown: dict[str, Outcome] = field(default_factory=dict)
+
+
+def read_upload(raw: bytes, name: str, *, limit: int = UPLOAD_LIMIT_BYTES) -> Upload:
+    """Read the bytes of an uploaded log, like the command line reads a file.
+
+    UTF-8, a leading byte order mark dropped, invalid bytes replaced. A file over ``limit``
+    bytes, or one where no line can be read as a log entry, gives an ``error`` with a readable
+    message; an empty file is not an error. Nothing here raises for a problem with the file.
     """
     if len(raw) > limit:
-        return Outcome(
+        return Upload(
             name=name,
             error=(
                 f"This file is {limit_text(len(raw))}, and the dashboard takes files up to "
@@ -194,29 +204,52 @@ def analyze_upload(
                 "loginsight analyze FILE"
             ),
         )
-    text = raw.decode("utf-8-sig", errors="replace")
     try:
-        analysis = analyze_text(text, name, bucket=bucket)
+        reading = read_text(raw.decode("utf-8-sig", errors="replace"))
     except NothingReadError as error:
-        return Outcome(
+        return Upload(
             name=name,
             error=(
                 f"None of the {error.total_lines} lines could be read as an access-log entry "
                 f"({error.reasons}). Is this an Apache or Nginx access log?"
             ),
         )
-    report = analysis.report
+    return Upload(name=name, reading=reading)
+
+
+def show(upload: Upload, bucket: str = DEFAULT_BUCKET) -> Outcome:
+    """What the page shows for ``upload`` with the traffic grouped by ``bucket``.
+
+    ``bucket`` is one of :data:`BUCKETS`, otherwise :class:`ValueError`. Only the traffic
+    depends on it: the requests, the detections and the numbers are the same for every period.
+    """
+    if upload.error is not None:
+        return Outcome(name=upload.name, error=upload.error)
+    if bucket in upload.shown:
+        return upload.shown[bucket]
+    reading = upload.reading
+    assert reading is not None  # an upload has a reading or an error
+    report = build(reading, upload.name, bucket=bucket)
     has_requests = bool(report.summary.total_requests)
-    return Outcome(
-        name=name,
+    outcome = Outcome(
+        name=upload.name,
         report=report,
         cards=overview(report),
         facts=_facts(report),
-        warnings=analysis.warnings,
+        warnings=reading.warnings,
         notice=None if has_requests else "The file has no requests in it.",
         charts=_charts(report) if has_requests else None,
-        entries=analysis.entries,
+        entries=reading.entries,
     )
+    upload.shown[bucket] = outcome
+    return outcome
+
+
+def analyze_upload(
+    raw: bytes, name: str, *, limit: int = UPLOAD_LIMIT_BYTES, bucket: str = DEFAULT_BUCKET
+) -> Outcome:
+    """Read an uploaded log and show it: :func:`read_upload` and then :func:`show`."""
+    return show(read_upload(raw, name, limit=limit), bucket)
 
 
 def _charts(report: Report) -> Charts:

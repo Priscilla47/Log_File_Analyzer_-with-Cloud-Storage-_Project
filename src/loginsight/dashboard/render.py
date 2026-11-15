@@ -170,10 +170,10 @@ def show_page(st: Any) -> None:
         key="bucket",
     )
     # Reading the log is the slow part and every click reruns this page, so the result is kept:
-    # changing a filter or an address then costs nothing. Only the latest analysis is kept,
-    # because it holds every request of the log in memory.
-    analyze = st.cache_resource(max_entries=1, show_spinner="Reading the log…")(data.analyze_upload)
-    outcome = analyze(upload.getvalue(), upload.name, limit=limit, bucket=bucket)
+    # changing a filter, an address or the traffic period then costs nothing. Only the latest
+    # reading is kept, because it holds every request of the log in memory.
+    read = st.cache_resource(max_entries=1, show_spinner="Reading the log…")(data.read_upload)
+    outcome = data.show(read(upload.getvalue(), upload.name, limit=limit), bucket)
     if outcome.error is not None:
         st.error(outcome.error)
         return
