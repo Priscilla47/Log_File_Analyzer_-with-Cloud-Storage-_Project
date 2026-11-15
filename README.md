@@ -2,15 +2,17 @@
 
 A web server access-log analyzer. Point it at an Apache or Nginx access log (Common or Combined format; it works out which server wrote it) and it tells you how much traffic you had, what failed, and who is behaving suspiciously.
 
-> **Status:** early development. Parsing, analysis, attack detection, reports and the command line work. The web dashboard and cloud storage backends are still to come.
+> **Status:** nearly finished. Parsing, analysis, attack detection, reports, the command line and the web dashboard work; cloud storage backends are the last part still to come.
 
 ## What it does
+
+![The dashboard after choosing the demo log](docs/images/dashboard-overview.png)
 
 - **Parse** the Common and Combined log formats of Apache and Nginx without choking on malformed lines. The server is detected from how it escapes special characters.
 - **Analyse** traffic: totals, top IPs and paths, status codes, data volume, traffic over time.
 - **Detect attacks** with readable rules: SQL injection, XSS, path traversal, command injection, probes for sensitive files, brute-force logins and scanning. Each detection comes with a severity and the evidence that triggered it.
-- **Two interfaces** over one core library: a command-line tool (ready) and a web dashboard (planned).
-- **Pluggable storage**: every file goes through one small interface. Local files work today; a cloud backend is planned.
+- **Two interfaces** over one core library: a command-line tool (ready) and a web dashboard (`loginsight dashboard` shows the headline numbers, three charts, the detections with filters and a view of one address for a log you choose).
+- **Pluggable storage**: every file goes through one small interface. Local files and Amazon S3 buckets work (see [docs/CLOUD_STORAGE.md](docs/CLOUD_STORAGE.md)).
 
 ## Why
 
@@ -59,7 +61,7 @@ pre-commit run --all-files    # run on everything now
 3. Attack detection: done
 4. Command-line tool: done
 5. Web dashboard
-6. Cloud storage backends
+6. Cloud storage: S3 done, other providers later
 
 ## Project layout
 
@@ -69,6 +71,8 @@ The layout and the reasoning behind it are in the `docs/` folder:
 - [Usage](docs/USAGE.md): install, commands, output formats, how to read a detection
 - [Architecture](docs/ARCHITECTURE.md): how it is built, the rules file, the report format
 - [Project structure](docs/STRUCTURE.md): how the folders are organised and why
+- [Dashboard browser check](docs/BROWSER_CHECK.md): what was looked at in a real browser and what it found
+- [Dashboard size limit](docs/PERFORMANCE.md): what a log at the 50 MB limit costs, measured
 
 ## License
 

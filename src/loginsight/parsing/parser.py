@@ -195,6 +195,15 @@ def _parse_lines(lines: Iterable[str], log_format: str) -> ParseResult:
     return ParseResult(entries=entries, stats=stats)
 
 
+def parse_lines(lines: Iterable[str], log_format: str = "apache") -> ParseResult:
+    """Parse a log given as lines, for example an open file, without holding it all as text.
+
+    The rules are those of :func:`parse_text`, which is this function over the lines of a text.
+    """
+    _check_format(log_format)
+    return _parse_lines(lines, log_format)
+
+
 def parse_text(text: str, log_format: str = "apache") -> ParseResult:
     """Parse the text of a log and report what was read and what was skipped.
 

@@ -1,35 +1,53 @@
 """The ``loginsight`` command line: a thin layer over the library.
 
-It collects arguments, calls the parser, the detection rules and the report code, and prints or
-writes the result. Exit codes: 0 success (finding attacks is not an error), 1 a problem with a
-file, 2 wrong usage.
+It collects arguments, calls the shared analysis and the report code, and prints or writes the
+result, or starts the dashboard. Exit codes: 0 success (finding attacks is not an error), 1 a
+problem with a file, 2 wrong usage.
 """
 
 import argparse
-import errno
 import os
+import signal
+import subprocess
 import sys
 from collections.abc import Sequence
-from pathlib import Path
 
 from loginsight import __version__
-from loginsight.detection import Severity, detect, load_rules
+from loginsight.dashboard.launch import (
+    DEFAULT_ADDRESS,
+    DEFAULT_PORT,
+    MAX_PORT,
+    MIN_PORT,
+    check_address,
+    dashboard_url,
+    is_loopback,
+    port_is_free,
+    streamlit_available,
+    streamlit_command,
+)
+from loginsight.detection import Severity, load_rules
 from loginsight.detection.ruleset import RulesError, RuleSet, parse_rules
-from loginsight.parsing.detect import detect_log_format
-from loginsight.parsing.parser import parse_text
-from loginsight.reporting.report import build_report, render_json, render_markdown
+from loginsight.reporting.report import render_json, render_markdown
 from loginsight.reporting.text import printable, render_text
 from loginsight.reporting.writers import write_to_storage
-from loginsight.storage import LocalStorage
+from loginsight.storage import InvalidKeyError, StorageError
+from loginsight.storage.locations import open_text, read_text, show, storage_for_folder
+from loginsight.workflow import NothingReadError, build, read_lines
 
 PROG = "loginsight"
-# More skipped lines than this share of the file earns a warning on stderr.
-SKIP_WARNING_SHARE = 0.10
 
 EXIT_OK = 0
 EXIT_PROBLEM = 1
 EXIT_USAGE = 2
 EXIT_INTERRUPTED = 130
+
+# Signals that end the dashboard like Ctrl+C does: a supervisor stopping the service (SIGTERM)
+# or a closed terminal (SIGHUP, which does not exist on Windows).
+STOP_SIGNALS = tuple(
+    getattr(signal, name) for name in ("SIGTERM", "SIGHUP") if hasattr(signal, name)
+)
+# How long Streamlit gets to finish after it is told to stop, before it is killed.
+STOP_WAIT_SECONDS = 10
 
 
 def _at_least_one(text: str) -> int:
@@ -40,6 +58,25 @@ def _at_least_one(text: str) -> int:
     if number < 1:
         raise argparse.ArgumentTypeError(f"must be at least 1, got {number}")
     return number
+
+
+def _port(text: str) -> int:
+    try:
+        number = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"port {text!r} is not a whole number") from None
+    if not MIN_PORT <= number <= MAX_PORT:
+        raise argparse.ArgumentTypeError(
+            f"port must be between {MIN_PORT} and {MAX_PORT}, got {number}"
+        )
+    return number
+
+
+def _address(text: str) -> str:
+    try:
+        return check_address(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,6 +131,29 @@ def build_parser() -> argparse.ArgumentParser:
         default="low",
         help="hide detections below this level (default: low)",
     )
+
+    dashboard = commands.add_parser(
+        "dashboard",
+        help="open the web dashboard",
+        description="Open the web dashboard in the browser (needs the dashboard extra).",
+    )
+    dashboard.add_argument(
+        "--port",
+        type=_port,
+        default=DEFAULT_PORT,
+        metavar="N",
+        help=f"port to serve the dashboard on (default: {DEFAULT_PORT})",
+    )
+    dashboard.add_argument(
+        "--address",
+        type=_address,
+        default=DEFAULT_ADDRESS,
+        metavar="IP",
+        help=(
+            f"IP address to listen on (default: {DEFAULT_ADDRESS}, this computer only). "
+            "Only change it inside a container, and publish the port to 127.0.0.1"
+        ),
+    )
     return parser
 
 
@@ -124,16 +184,17 @@ def _silence_stdout() -> None:
         pass
 
 
-def _read_file(name: str) -> str:
-    """The text of the file ``name``, read through the storage layer.
+def _problem(error: OSError, what: str) -> str:
+    """One line for a problem with a file or a bucket: ``what`` and the reason.
 
-    The file is resolved first, so a link such as ``/var/log/access.log`` that points elsewhere
-    works, and the storage is confined to the folder that really holds the file.
+    A failure of a cloud service already says what it was doing and where (see
+    :class:`loginsight.storage.StorageError`), so its message is used as it is.
     """
-    path = Path(name).resolve()
-    if not path.name:  # the root of the file system
-        raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), name)
-    return LocalStorage(path.parent).read_text(path.name)
+    if type(error) is StorageError and str(error):
+        return str(error)
+    if isinstance(error, InvalidKeyError):
+        return f"{what}: {error}"
+    return f"{what}: {error.strerror or type(error).__name__}"
 
 
 def _load_rules(name: str | None) -> RuleSet:
@@ -143,10 +204,73 @@ def _load_rules(name: str | None) -> RuleSet:
     """
     if name is None:
         return load_rules()
-    return parse_rules(_read_file(name), source=name)
+    return parse_rules(read_text(name), source=name)
+
+
+class _Terminated(Exception):
+    """The command was asked to end by a signal (see :data:`STOP_SIGNALS`), not by Ctrl+C."""
+
+
+def _end(process: subprocess.Popen) -> None:
+    """Wait a moment for ``process`` to finish, then kill it."""
+    try:
+        process.wait(timeout=STOP_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def _dashboard(args: argparse.Namespace) -> int:
+    """Start the Streamlit app, or say how to install it or why it cannot start."""
+    if not streamlit_available():
+        print(
+            f"{PROG}: error: the dashboard needs Streamlit, which is not installed. "
+            "Install it with:  pip install 'loginsight[dashboard]'",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    if not port_is_free(args.port, args.address):
+        return _fail(f"port {args.port} is already in use; choose another with --port")
+    if not is_loopback(args.address):
+        _warn(
+            f"the dashboard is offered on {args.address}: anyone who can reach it can upload "
+            "logs and see the result. Use this inside a container, and publish the port to "
+            "127.0.0.1 only"
+        )
+    try:
+        process = subprocess.Popen(streamlit_command(args.port, args.address))
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        return _fail(f"cannot start Streamlit: {reason}")
+    # Streamlit is told not to open a browser (see streamlit_command), so say where it is.
+    _print(
+        f"LogInsight dashboard: open {dashboard_url(args.port)} in your browser "
+        "(press Ctrl+C to stop)\n"
+    )
+
+    def stop(number: int, frame: object) -> None:
+        raise _Terminated
+
+    previous = {number: signal.signal(number, stop) for number in STOP_SIGNALS}
+    try:
+        return process.wait()
+    except KeyboardInterrupt:  # Ctrl+C is how the dashboard is stopped, not a failure
+        _end(process)  # the terminal sent it to Streamlit too; give it a moment to finish
+        return EXIT_OK
+    except _Terminated:  # nobody told Streamlit, so tell it to stop
+        process.terminate()
+        _end(process)
+        return EXIT_OK
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+        if process.poll() is None:  # whatever ended this command, the server must not stay behind
+            process.terminate()
 
 
 def _run(args: argparse.Namespace) -> int:
+    if args.command == "dashboard":
+        return _dashboard(args)
     try:
         rules = _load_rules(args.rules)
     except RulesError as error:
@@ -154,48 +278,32 @@ def _run(args: argparse.Namespace) -> int:
             "\n".join(printable(line) if line else line for line in str(error).split("\n"))
         )
     except OSError as error:
-        reason = error.strerror or type(error).__name__
-        return _fail(f"cannot read {printable(args.rules)}: {reason}")
+        return _fail(_problem(error, f"cannot read {printable(args.rules)}"))
+    minimum = Severity.from_name(args.min_severity) if args.command == "detect" else Severity.LOW
     try:
-        text = _read_file(args.file)
+        reading = read_lines(lambda: open_text(args.file), rules=rules, min_severity=minimum)
     except OSError as error:
-        reason = error.strerror or type(error).__name__
-        return _fail(f"cannot read {args.file}: {reason}")
-    result = parse_text(text, detect_log_format(text))
-
-    stats = result.stats
-    if stats.total_lines and not stats.parsed:
-        # Nothing was read, so a report would say "no attacks" about a file never understood.
-        reasons = ", ".join(f"{name}: {count}" for name, count in stats.skipped_by_reason.items())
+        return _fail(_problem(error, f"cannot read {printable(args.file)}"))
+    except NothingReadError as error:
         return _fail(
-            f"none of the {stats.total_lines} lines in {printable(args.file)} could be read "
-            f"as an access-log entry ({reasons})"
+            f"none of the {error.total_lines} lines in {printable(args.file)} could be read "
+            f"as an access-log entry ({error.reasons})"
         )
-    if stats.total_lines and stats.skipped / stats.total_lines > SKIP_WARNING_SHARE:
-        _warn(
-            f"{stats.skipped} of {stats.total_lines} lines "
-            f"({stats.skipped / stats.total_lines:.0%}) could not be read"
-        )
-
-    detections = detect(result.entries, rules)
-    if args.command == "detect":
-        minimum = Severity.from_name(args.min_severity)
-        detections = [d for d in detections if d.severity >= minimum]
-    report = build_report(
-        result,
-        detections,
-        source_name=args.file,
+    report = build(
+        reading,
+        args.file,
         top_n=getattr(args, "top", 10),
         bucket=getattr(args, "bucket", "hour"),
     )
+    for warning in reading.warnings:
+        _warn(warning)
 
     if args.output is not None:
         try:
-            keys = write_to_storage(report, LocalStorage(args.output))
+            keys = write_to_storage(report, storage_for_folder(args.output))
         except OSError as error:
-            reason = error.strerror or type(error).__name__
-            return _fail(f"cannot write to {args.output}: {reason}")
-        _print("".join(f"{Path(args.output) / key}\n" for key in keys))
+            return _fail(_problem(error, f"cannot write to {printable(args.output)}"))
+        _print("".join(f"{show(args.output, key)}\n" for key in keys))
     elif args.format == "json":
         _print(render_json(report))
     elif args.format == "md":

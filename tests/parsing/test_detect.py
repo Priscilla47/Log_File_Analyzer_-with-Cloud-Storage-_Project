@@ -124,3 +124,62 @@ class TestLimits:
         started = time.perf_counter()
         assert detect_log_format(text) == "nginx"
         assert time.perf_counter() - started < 2
+
+
+class TestByLines:
+    """detect_log_format_lines gives the answer for the whole text, a line at a time."""
+
+    TEXTS = [
+        "",
+        line(),
+        line(agent=r"a \x22quoted\x22 \xC3\xA9") * 3,
+        line(agent=r"a \"quoted\" \xc3\xa9") * 3,
+        line(agent=r"\x16 \x01") * 5,  # digits only: no evidence either way
+        line(agent=r"\x22") + line(agent=r"\"") * 2,  # apache has more
+        line(agent=r"\x22") * 2 + line(agent=r"\"") + line(agent="plain"),
+        line(agent=r"\\\\\x22") * 3,
+        "no newline at all " + r"\x22 \x5C",
+        line(agent=r"\x5C") + "\r\n" + line(agent=r"\x5C") + "\r",
+    ]
+
+    @pytest.mark.parametrize("text", TEXTS)
+    def test_it_agrees_with_the_text_version(self, text):
+        assert detect.detect_log_format_lines(text.splitlines(keepends=True)) == detect_log_format(
+            text
+        )
+
+    @pytest.mark.parametrize("name", ["demo.log", "demo_nginx.log", "clean.log"])
+    def test_it_agrees_on_the_samples_read_as_a_file(self, name):
+        with open(SAMPLES / name, encoding="utf-8") as file:
+            assert detect.detect_log_format_lines(file) == detect_log_format(
+                (SAMPLES / name).read_text()
+            )
+
+    def test_the_lines_after_the_examined_escapes_are_not_read(self):
+        read = []
+
+        def lines():
+            for number in range(10_000_000):
+                read.append(number)
+                yield line(agent=r"\x22" * 1000)
+
+        assert detect.detect_log_format_lines(lines()) == "nginx"
+        assert len(read) <= MAX_ESCAPES_EXAMINED // 1000 + 1
+
+    def test_a_log_with_no_escapes_is_read_to_the_end(self):
+        read = []
+
+        def lines():
+            for number in range(50):
+                read.append(number)
+                yield line()
+
+        assert detect.detect_log_format_lines(lines()) == "apache" and len(read) == 50
+
+    def test_the_cap_counts_escapes_across_lines(self):
+        # 100,000 apache escapes first, then more nginx ones that must not be counted
+        first = line(agent=r"\"" * 1000) * (MAX_ESCAPES_EXAMINED // 1000)
+        rest = line(agent=r"\x22" * 1000) * 200
+        text = first + rest
+        assert detect_log_format(text) == "apache"
+        assert detect.detect_log_format_lines(text.splitlines(keepends=True)) == "apache"

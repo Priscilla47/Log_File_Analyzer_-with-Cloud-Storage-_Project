@@ -18,6 +18,14 @@ This installs the `loginsight` command. Check it:
 $ loginsight --version
 ```
 
+The dashboard is optional and needs Streamlit (Python 3.11 or newer installs the latest release; Python 3.10 gets an older one):
+
+```bash
+pip install -e ".[dashboard]"
+```
+
+(Or skip all of this and use the container: [Running in a container](#running-in-a-container).)
+
 The repository comes with a small synthetic log, `data/samples/demo.log`, so you can try everything without a real server. All the commands on this page use it.
 
 ## The two commands
@@ -28,6 +36,8 @@ loginsight detect  FILE [--format text|json|md] [--output DIR] [--min-severity l
 ```
 
 `python -m loginsight ...` does the same as `loginsight ...`.
+
+The tool works out whether the log was written by Apache or by Nginx and says so in every report (`Format:` in the text view, `Log format` in the Markdown report, `source.format` in the JSON). A log with no special characters in it reads the same either way and is reported as `apache`.
 
 ### analyze: what happened
 
@@ -59,6 +69,63 @@ $ loginsight detect data/samples/demo.log --min-severity high
 ```
 
 Finding attacks is not an error: the command exits with 0 whether or not it found any.
+
+## The dashboard
+
+```
+$ loginsight dashboard
+```
+
+starts the dashboard and prints its address (by default `http://127.0.0.1:8501`); open that in your browser, and press Ctrl+C to stop it (a termination signal, as sent by `kill` or a service manager, stops it too and ends with code 0; the server never stays behind). `--port N` chooses the port; if something already listens on it the command says so and exits with code 1 before starting anything. It listens on your own computer only (`127.0.0.1`), never on the network, because a log can hold other people's addresses, and it does not send Streamlit's usage statistics. Without the dashboard extra the command says how to install it and exits with code 2.
+
+Choose an access log on the page (up to 50 MB, counted as Streamlit counts, 1 MB = 1,000,000 bytes; for a bigger one use the command line; what a log that size costs is in [PERFORMANCE.md](PERFORMANCE.md)) and it shows the headline numbers: requests, unique IPs, the error rate, the data sent and how many lines were skipped. They are the numbers of `loginsight analyze`, calculated by the same code. If more than 10 percent of the lines could not be read it warns you, and if none could be read it says so instead of showing zeros.
+
+Below the numbers are three charts: responses by status class, traffic over time (requests and errors; choose to group it by minute, hour or day above the numbers; the command line offers minute and hour), and the most requested paths. The colours were picked to be told apart by people with the usual kinds of colour blindness. If the log covers too long a time to list every quiet period, the traffic chart shows only the periods with requests and says so.
+
+![The dashboard after choosing the demo log: the headline numbers, the status chart and the traffic over time](images/dashboard-overview.png)
+
+The traffic starts grouped by the length of the log: by the minute for a log of up to three hours, by the hour up to three days, by the day beyond that. A log with only one period in it is drawn as bars, because a line needs two points.
+
+Under the charts is the table of **detections**: the severity (a coloured square and the word, so the meaning never depends on colour), the class, the rule, the address, the time in UTC, how many requests it covers and the evidence, shown as plain text (control characters appear as `\x1b`, never acted on). It can be narrowed by severity, class, address and a time range; each value shows how many detections it has, and the filters combine. "Showing 34 of 34 detections" says how many are left.
+
+Last, **One address** lets you choose an address (those with detections first, then the busiest, at most 200) and shows everything it did: its requests, when it was first and last seen, the responses it got, the paths it asked for and its detections.
+
+![The detections table with its filters, and the view of one address](images/dashboard-detections.png)
+
+Reading a big log takes a moment; the page keeps the result, so changing a filter, an address or the traffic period afterwards is instant. Choosing another file reads that one instead. The screenshots show `data/samples/demo.log`, a synthetic log; what was looked at in a real browser, and what that found, is in [BROWSER_CHECK.md](BROWSER_CHECK.md).
+
+## Running in a container
+
+If you would rather not install Python packages, the repository has a `Dockerfile` for the command line and the dashboard (Docker, or any tool that builds from a Dockerfile, is needed). The image holds the tool with both optional extras (dashboard and S3), runs as a user without privileges, and has no secrets in it. It also holds the synthetic sample logs, in `/samples`.
+
+Build it once, from a clone of the repository:
+
+```
+docker build -t loginsight .
+```
+
+Analyse the demo log that is inside the image:
+
+```
+docker run --rm loginsight analyze /samples/demo.log
+```
+
+Analyse your own log: mount the folder that holds it on `/data` (add `:Z` to the mount on a system with SELinux). A report written with `--output` goes into the same folder:
+
+```
+docker run --rm -v "$PWD":/data loginsight analyze access.log
+docker run --rm -v "$PWD":/data loginsight detect access.log --format json --output reports
+```
+
+The files written into a mounted folder belong to the user inside the container (number 10001); add `--user "$(id -u)"` to write them as yourself.
+
+The dashboard needs to listen on all the addresses of the container, or the port you publish would not reach it. Publish the port to `127.0.0.1` of your machine, so that only you can open it:
+
+```
+docker run --rm -p 127.0.0.1:8501:8501 loginsight dashboard --address 0.0.0.0
+```
+
+Then open <http://127.0.0.1:8501>. `-p 8501:8501` without the `127.0.0.1:` would offer the dashboard, with the logs anyone uploads to it, to your whole network; the command warns about this whenever `--address` is not a local address. For a log in S3, pass the usual `AWS_*` environment variables (`-e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION`) and an `s3://` location; see [CLOUD_STORAGE.md](CLOUD_STORAGE.md).
 
 ## Output formats
 
@@ -100,8 +167,8 @@ The same log always gives byte-identical files: they hold no creation time and n
 | Code | Meaning |
 | --- | --- |
 | 0 | success, including a log with no requests and a log with attacks in it |
-| 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), or the output folder cannot be written. One line on standard error, no traceback, and no report files |
-| 2 | wrong usage, such as an unknown option or `--top 0` |
+| 1 | a problem with a file: it is missing, unreadable or a directory, none of its lines could be read as log entries (a file in another format, or binary data), the output folder cannot be written, or the dashboard's port is already in use. One line on standard error, no traceback, and no report files |
+| 2 | wrong usage, such as an unknown option or `--top 0`, or `loginsight dashboard` without the dashboard extra installed |
 
 Lines that cannot be read are skipped and counted, and the counts are always shown. If more than 10 percent of the lines were skipped, a warning is printed on standard error, so it never ends up inside JSON output.
 

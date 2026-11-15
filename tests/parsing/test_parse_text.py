@@ -50,3 +50,32 @@ def test_an_empty_text_has_no_entries_and_no_lines():
 def test_a_carriage_return_is_not_kept_in_the_problem_text():
     issue = parse_text("bad line\r\n").stats.first_errors[0]
     assert issue.line == "bad line"
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_parse_lines_over_an_open_file_equals_parse_file(name, tmp_path):
+    from loginsight.parsing.parser import parse_lines
+
+    path = tmp_path / "x.log"
+    path.write_bytes(CASES[name].encode("utf-8"))
+    with open(path, encoding="utf-8-sig", errors="replace") as file:
+        assert parse_lines(file) == parse_file(path)
+
+
+def test_parse_lines_refuses_an_unknown_format_before_reading_a_line():
+    from loginsight.parsing.parser import parse_lines
+
+    def lines():
+        raise AssertionError("a line was read")
+        yield ""
+
+    with pytest.raises(ValueError, match="unknown log format"):
+        parse_lines(lines(), "iis")
+
+
+def test_parse_lines_takes_any_iterable_of_lines_and_in_the_nginx_mode():
+    from loginsight.parsing.parser import parse_lines
+
+    nginx = GOOD.replace('"x"', r'"a\x22b"') + "\n"
+    entries = parse_lines(iter([nginx]), "nginx").entries
+    assert [e.user_agent for e in entries] == ['a"b']
